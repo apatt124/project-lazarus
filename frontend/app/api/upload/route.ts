@@ -247,19 +247,32 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    // Store in database with embedding
-    // For very long documents, we'll store the full content but create embeddings from chunks
-    const maxContentLength = 50000; // Increased from 5000 to 50000 characters
-    const contentToStore = content.length > maxContentLength 
-      ? content.substring(0, maxContentLength) + '\n\n[Content truncated - full document stored in S3]'
-      : content;
+    // Store in database with chunking for large documents
+    // For documents with 100+ pages (or 100,000+ characters), we'll chunk them
+    const chunkSize = 10000; // 10,000 characters per chunk (roughly 5-7 pages)
+    const chunks: string[] = [];
     
+    if (content.length > chunkSize) {
+      // Split into overlapping chunks for better context
+      const overlapSize = 500; // 500 character overlap between chunks
+      for (let i = 0; i < content.length; i += (chunkSize - overlapSize)) {
+        const chunk = content.substring(i, Math.min(i + chunkSize, content.length));
+        if (chunk.trim().length > 100) { // Only add non-empty chunks
+          chunks.push(chunk);
+        }
+      }
+      console.log(`Split document into ${chunks.length} chunks`);
+    } else {
+      chunks.push(content);
+    }
+    
+    // Store each chunk as a separate document with chunk metadata
     const lambdaPayload = {
-      apiPath: '/store',
+      apiPath: '/store-chunked',
       httpMethod: 'POST',
       parameters: [
         { name: 's3_key', value: s3Key },
-        { name: 'content', value: contentToStore },
+        { name: 'chunks', value: JSON.stringify(chunks) },
         {
           name: 'metadata',
           value: JSON.stringify({
@@ -269,6 +282,7 @@ export async function POST(request: NextRequest) {
             contentHash: contentHash,
             fileSize: buffer.length,
             fullContentLength: content.length,
+            totalChunks: chunks.length,
           }),
         },
       ],

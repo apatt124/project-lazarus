@@ -95,30 +95,80 @@ def search_documents(query_text: str, limit: int = 10, threshold: float = 0.05) 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Search using pgvector
+        # Search using pgvector - get more results to account for chunks
         cursor.execute("""
             SELECT * FROM medical.search_documents(
                 %s::vector(1024),
                 %s,
                 %s
             )
-        """, (query_embedding, threshold, limit))
+        """, (query_embedding, threshold, limit * 3))  # Get 3x results to handle chunks
         
         results = cursor.fetchall()
         cursor.close()
         
-        # Convert to JSON-serializable format
-        documents = []
+        # Group chunks from the same document
+        documents_map = {}
         for row in results:
-            # Return more content for better AI responses (up to 10000 chars)
-            content = row['content_text'] if row['content_text'] else ''
-            documents.append({
-                'id': str(row['id']),
-                's3_key': row['s3_key'],
-                'content': content[:10000] if len(content) > 10000 else content,
-                'similarity': float(row['similarity']),
-                'metadata': row['metadata']
-            })
+            metadata = row['metadata'] or {}
+            
+            # Check if this is a chunk
+            if metadata.get('is_chunk'):
+                parent_key = metadata.get('parent_s3_key')
+                chunk_index = metadata.get('chunk_index', 0)
+                
+                if parent_key not in documents_map:
+                    documents_map[parent_key] = {
+                        'id': str(row['id']),
+                        's3_key': parent_key,
+                        'content': '',
+                        'chunks': [],
+                        'similarity': float(row['similarity']),
+                        'metadata': metadata,
+                        'is_chunked': True
+                    }
+                
+                # Add chunk content
+                documents_map[parent_key]['chunks'].append({
+                    'index': chunk_index,
+                    'content': row['content_text'] or '',
+                    'similarity': float(row['similarity'])
+                })
+                
+                # Update best similarity score
+                if float(row['similarity']) > documents_map[parent_key]['similarity']:
+                    documents_map[parent_key]['similarity'] = float(row['similarity'])
+            else:
+                # Regular document (not chunked)
+                doc_key = row['s3_key']
+                if doc_key not in documents_map:
+                    content = row['content_text'] if row['content_text'] else ''
+                    documents_map[doc_key] = {
+                        'id': str(row['id']),
+                        's3_key': doc_key,
+                        'content': content[:10000] if len(content) > 10000 else content,
+                        'similarity': float(row['similarity']),
+                        'metadata': metadata,
+                        'is_chunked': False
+                    }
+        
+        # Convert to list and sort by similarity
+        documents = list(documents_map.values())
+        documents.sort(key=lambda x: x['similarity'], reverse=True)
+        
+        # For chunked documents, combine chunk content
+        for doc in documents:
+            if doc.get('is_chunked') and doc.get('chunks'):
+                # Sort chunks by index
+                doc['chunks'].sort(key=lambda x: x['index'])
+                # Combine content from top matching chunks (up to 5 chunks)
+                top_chunks = sorted(doc['chunks'], key=lambda x: x['similarity'], reverse=True)[:5]
+                top_chunks.sort(key=lambda x: x['index'])  # Re-sort by index for reading order
+                doc['content'] = '\n\n[...]\n\n'.join([c['content'] for c in top_chunks])
+                doc['chunk_count'] = len(doc['chunks'])
+        
+        # Limit to requested number of documents
+        documents = documents[:limit]
         
         log(f"Found {len(documents)} documents for query")
         return documents
@@ -171,6 +221,69 @@ def store_document(s3_key: str, content_text: str, metadata: dict = None) -> dic
         raise
 
 
+def store_chunked_document(s3_key: str, chunks: list, metadata: dict = None) -> dict:
+    """Store large document as multiple chunks with separate embeddings"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        document_ids = []
+        total_chunks = len(chunks)
+        
+        log(f"Storing {total_chunks} chunks for document {s3_key}")
+        
+        for i, chunk_text in enumerate(chunks):
+            # Generate embedding for this chunk
+            embedding = get_embedding(chunk_text)
+            
+            # Create chunk-specific metadata
+            chunk_metadata = {
+                **(metadata or {}),
+                'chunk_index': i,
+                'total_chunks': total_chunks,
+                'is_chunk': True,
+                'parent_s3_key': s3_key,
+            }
+            
+            # Create unique s3_key for each chunk
+            chunk_s3_key = f"{s3_key}#chunk{i}"
+            
+            # Insert chunk
+            cursor.execute("""
+                INSERT INTO medical.documents 
+                (s3_key, content_text, embedding, metadata, document_type)
+                VALUES (%s, %s, %s::vector(1024), %s, %s)
+                RETURNING id
+            """, (
+                chunk_s3_key,
+                chunk_text,
+                embedding,
+                json.dumps(chunk_metadata),
+                metadata.get('document_type') if metadata else None
+            ))
+            
+            doc_id = cursor.fetchone()[0]
+            document_ids.append(str(doc_id))
+            
+            log(f"Stored chunk {i+1}/{total_chunks} with ID {doc_id}")
+        
+        cursor.close()
+        
+        return {
+            'success': True,
+            'document_ids': document_ids,
+            's3_key': s3_key,
+            'chunks_stored': total_chunks
+        }
+    
+    except Exception as e:
+        log(f"Error storing chunked document: {str(e)}")
+        if conn:
+            conn.rollback()
+        raise
+
+
 def lambda_handler(event: dict, context) -> dict:
     """Main Lambda handler for Bedrock Agent action group"""
     
@@ -205,6 +318,14 @@ def lambda_handler(event: dict, context) -> dict:
             metadata = json.loads(params.get('metadata', '{}'))
             
             result = store_document(s3_key, content, metadata)
+            response_body = result
+        
+        elif api_path == '/store-chunked' and http_method == 'POST':
+            s3_key = params.get('s3_key')
+            chunks = json.loads(params.get('chunks', '[]'))
+            metadata = json.loads(params.get('metadata', '{}'))
+            
+            result = store_chunked_document(s3_key, chunks, metadata)
             response_body = result
         
         elif api_path == '/check-duplicate' and http_method == 'POST':
