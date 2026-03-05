@@ -1,0 +1,67 @@
+# Environment variables
+.env
+.env.local
+.env*.local
+frontend/.env.local
+
+# Secrets and credentials
+*.pem
+*.key
+*.secret
+
+# AWS credentials
+.aws/
+
+# Node modules
+node_modules/
+frontend/node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+lambda/**/__pycache__/
+lambda/**/venv/
+lambda/**/env/
+
+# Lambda packages
+lambda/**/function.zip
+lambda/**/package/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/tmp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+response.json
+test_*.json
+
+# Database dumps
+*.sql.backup
+*.dump
+
+# Temporary files
+/tmp/
+*.bak
