@@ -221,14 +221,25 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <input
-                type="text"
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about your medical history..."
-                className="flex-1 bg-transparent px-2 py-3 focus:outline-none text-base"
-                style={{ color: theme.colors.text }}
+                className="flex-1 bg-transparent px-2 py-3 focus:outline-none text-base resize-none"
+                style={{ color: theme.colors.text, minHeight: '24px', maxHeight: '200px' }}
                 disabled={isLoading}
+                rows={1}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = '24px';
+                  target.style.height = Math.min(target.scrollHeight, 200) + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
               />
               <button
                 type="submit"
