@@ -1,6 +1,6 @@
 # Project Lazarus
 
-An AI-powered personal medical record management system that helps you organize, search, and understand your health information.
+Personal medical record management system. Building an AI assistant to help organize, search, and understand my own medical documents (lab results, visit notes, prescriptions, imaging reports). The system stores documents securely in my private AWS account and uses AI to provide conversational access to my health information. This is for personal use only to better manage my own healthcare data.
 
 ## Overview
 
