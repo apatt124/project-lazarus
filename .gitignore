@@ -31,9 +31,24 @@ lambda/**/__pycache__/
 lambda/**/venv/
 lambda/**/env/
 
-# Lambda packages
+# Lambda packages and dependencies (too large for git)
 lambda/**/function.zip
 lambda/**/package/
+lambda/db-init/boto3/
+lambda/db-init/botocore/
+lambda/db-init/dateutil/
+lambda/db-init/jmespath/
+lambda/db-init/jmespath-*/
+lambda/db-init/psycopg2/
+lambda/db-init/psycopg2_binary-*/
+lambda/db-init/python_dateutil-*/
+lambda/db-init/s3transfer/
+lambda/db-init/s3transfer-*/
+lambda/db-init/six.py
+lambda/db-init/six-*/
+lambda/db-init/urllib3/
+lambda/db-init/urllib3-*/
+lambda/db-init/bin/
 
 # Logs
 *.log
