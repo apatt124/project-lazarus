@@ -32,18 +32,35 @@ def get_db_connection():
     """Get or create database connection"""
     global _db_connection
     
-    if _db_connection is None or _db_connection.closed:
-        # Get password from Secrets Manager
-        secret = secrets_client.get_secret_value(SecretId='lazarus/db-password')
-        db_password = secret['SecretString']
-        
-        _db_connection = psycopg2.connect(
-            host=DB_ENDPOINT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=db_password,
-            connect_timeout=5
-        )
+    try:
+        # Check if connection exists and is healthy
+        if _db_connection is not None and not _db_connection.closed:
+            # Test the connection
+            cursor = _db_connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            return _db_connection
+    except:
+        # Connection is bad, close it
+        if _db_connection:
+            try:
+                _db_connection.close()
+            except:
+                pass
+        _db_connection = None
+    
+    # Create new connection
+    secret = secrets_client.get_secret_value(SecretId='lazarus/db-password')
+    db_password = secret['SecretString']
+    
+    _db_connection = psycopg2.connect(
+        host=DB_ENDPOINT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=db_password,
+        connect_timeout=5
+    )
+    _db_connection.autocommit = True  # Enable autocommit to avoid transaction issues
     
     return _db_connection
 
@@ -219,6 +236,89 @@ def lambda_handler(event: dict, context) -> dict:
                 response_body = {
                     'exists': False
                 }
+        
+        elif api_path == '/stats' and http_method == 'GET':
+            # Get comprehensive database statistics
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Total documents
+            cursor.execute("SELECT COUNT(*) as count FROM medical.documents")
+            total_docs = cursor.fetchone()['count']
+            
+            # Document types
+            cursor.execute("""
+                SELECT document_type, COUNT(*) as count
+                FROM medical.documents
+                WHERE document_type IS NOT NULL
+                GROUP BY document_type
+                ORDER BY count DESC
+            """)
+            doc_types = [dict(row) for row in cursor.fetchall()]
+            
+            # Providers
+            cursor.execute("""
+                SELECT DISTINCT metadata->>'provider_name' as provider
+                FROM medical.documents
+                WHERE metadata->>'provider_name' IS NOT NULL
+            """)
+            providers = [row['provider'] for row in cursor.fetchall()]
+            
+            # Check for test data (documents with "test" in s3_key or content)
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM medical.documents
+                WHERE 
+                    s3_key LIKE '%test%' OR
+                    content_text ILIKE '%Dr. Sarah Johnson%' OR
+                    metadata->>'isTest' = 'true'
+            """)
+            test_count = cursor.fetchone()['count']
+            
+            # Get all document details for transparency
+            cursor.execute("""
+                SELECT 
+                    id,
+                    s3_key,
+                    document_type,
+                    metadata->>'provider_name' as provider,
+                    metadata->>'document_date' as doc_date,
+                    metadata->>'filename' as filename,
+                    LEFT(content_text, 150) as content_preview
+                FROM medical.documents
+                ORDER BY s3_key DESC
+            """)
+            all_docs = []
+            for row in cursor.fetchall():
+                # Determine if this is test data
+                is_test = (
+                    'test' in (row['s3_key'] or '').lower() or
+                    'Dr. Sarah Johnson' in (row['content_preview'] or '')
+                )
+                
+                all_docs.append({
+                    'id': str(row['id']),
+                    's3_key': row['s3_key'],
+                    'document_type': row['document_type'],
+                    'provider': row['provider'],
+                    'document_date': row['doc_date'],
+                    'filename': row['filename'],
+                    'content_preview': row['content_preview'],
+                    'is_test_data': is_test
+                })
+            
+            cursor.close()
+            
+            response_body = {
+                'success': True,
+                'total_documents': total_docs,
+                'document_types': doc_types,
+                'providers': providers,
+                'has_test_data': test_count > 0,
+                'test_document_count': test_count,
+                'real_document_count': total_docs - test_count,
+                'all_documents': all_docs
+            }
         
         else:
             response_body = {

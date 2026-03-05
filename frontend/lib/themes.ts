@@ -20,6 +20,46 @@ export type Theme = {
 };
 
 export const themes: Record<string, Theme> = {
+  dark: {
+    name: 'Dark',
+    colors: {
+      primary: '#8b5cf6',
+      primaryDark: '#7c3aed',
+      primaryLight: '#a78bfa',
+      secondary: '#6366f1',
+      accent: '#3b82f6',
+      background: '#0a0a0a',
+      surface: '#1a1a1a',
+      text: '#f5f5f5',
+      textSecondary: '#a3a3a3',
+      border: '#2a2a2a',
+    },
+    gradients: {
+      primary: 'from-violet-600 to-indigo-600',
+      background: 'from-gray-950 via-gray-900 to-gray-950',
+      button: 'from-violet-600 to-indigo-600',
+    },
+  },
+  darkOcean: {
+    name: 'Dark Ocean',
+    colors: {
+      primary: '#0ea5e9',
+      primaryDark: '#0284c7',
+      primaryLight: '#38bdf8',
+      secondary: '#06b6d4',
+      accent: '#14b8a6',
+      background: '#0a0a0a',
+      surface: '#1a1a1a',
+      text: '#f0f9ff',
+      textSecondary: '#94a3b8',
+      border: '#1e293b',
+    },
+    gradients: {
+      primary: 'from-sky-600 to-cyan-600',
+      background: 'from-gray-950 via-slate-900 to-gray-950',
+      button: 'from-sky-500 to-cyan-500',
+    },
+  },
   gemini: {
     name: 'Gemini',
     colors: {
@@ -140,46 +180,6 @@ export const themes: Record<string, Theme> = {
       button: 'from-indigo-500 to-purple-500',
     },
   },
-  dark: {
-    name: 'Dark',
-    colors: {
-      primary: '#8b5cf6',
-      primaryDark: '#7c3aed',
-      primaryLight: '#a78bfa',
-      secondary: '#6366f1',
-      accent: '#3b82f6',
-      background: '#0a0a0a',
-      surface: '#1a1a1a',
-      text: '#f5f5f5',
-      textSecondary: '#a3a3a3',
-      border: '#2a2a2a',
-    },
-    gradients: {
-      primary: 'from-violet-600 to-indigo-600',
-      background: 'from-gray-950 via-gray-900 to-gray-950',
-      button: 'from-violet-600 to-indigo-600',
-    },
-  },
-  darkOcean: {
-    name: 'Dark Ocean',
-    colors: {
-      primary: '#0ea5e9',
-      primaryDark: '#0284c7',
-      primaryLight: '#38bdf8',
-      secondary: '#06b6d4',
-      accent: '#14b8a6',
-      background: '#0a0a0a',
-      surface: '#1a1a1a',
-      text: '#f0f9ff',
-      textSecondary: '#94a3b8',
-      border: '#1e293b',
-    },
-    gradients: {
-      primary: 'from-sky-600 to-cyan-600',
-      background: 'from-gray-950 via-slate-900 to-gray-950',
-      button: 'from-sky-500 to-cyan-500',
-    },
-  },
 };
 
-export const defaultTheme = 'gemini';
+export const defaultTheme = 'dark';
