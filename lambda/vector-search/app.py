@@ -110,10 +110,12 @@ def search_documents(query_text: str, limit: int = 10, threshold: float = 0.05) 
         # Convert to JSON-serializable format
         documents = []
         for row in results:
+            # Return more content for better AI responses (up to 10000 chars)
+            content = row['content_text'] if row['content_text'] else ''
             documents.append({
                 'id': str(row['id']),
                 's3_key': row['s3_key'],
-                'content': row['content_text'][:500] if row['content_text'] else '',
+                'content': content[:10000] if len(content) > 10000 else content,
                 'similarity': float(row['similarity']),
                 'metadata': row['metadata']
             })

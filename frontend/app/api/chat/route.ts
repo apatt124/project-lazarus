@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       sources: searchResults.map((r: any) => ({
         id: r.id,
         similarity: r.similarity,
-        content: r.content.substring(0, 200) + '...',
+        content: r.content.substring(0, 1000) + (r.content.length > 1000 ? '...' : ''),
       })),
       systemInfo: systemInfo.summary, // Include system info summary in response
     });
@@ -285,7 +285,7 @@ REMEMBER: You are a POWERFUL, TRANSPARENT, INTROSPECTIVE AI. Don't be shy about 
       modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
       body: JSON.stringify({
         anthropic_version: 'bedrock-2023-05-31',
-        max_tokens: 3000,
+        max_tokens: 4096, // Increased from 3000 to allow longer, more comprehensive responses
         temperature: 0.7,
         system: systemPrompt,
         messages: [

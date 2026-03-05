@@ -248,12 +248,18 @@ export async function POST(request: NextRequest) {
     );
 
     // Store in database with embedding
+    // For very long documents, we'll store the full content but create embeddings from chunks
+    const maxContentLength = 50000; // Increased from 5000 to 50000 characters
+    const contentToStore = content.length > maxContentLength 
+      ? content.substring(0, maxContentLength) + '\n\n[Content truncated - full document stored in S3]'
+      : content;
+    
     const lambdaPayload = {
       apiPath: '/store',
       httpMethod: 'POST',
       parameters: [
         { name: 's3_key', value: s3Key },
-        { name: 'content', value: content.substring(0, 5000) }, // Limit content size
+        { name: 'content', value: contentToStore },
         {
           name: 'metadata',
           value: JSON.stringify({
@@ -262,6 +268,7 @@ export async function POST(request: NextRequest) {
             uploadedAt: new Date().toISOString(),
             contentHash: contentHash,
             fileSize: buffer.length,
+            fullContentLength: content.length,
           }),
         },
       ],
