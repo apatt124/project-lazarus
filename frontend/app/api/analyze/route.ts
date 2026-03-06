@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
 const bedrock = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.LAZARUS_AWS_REGION || 'us-east-1',
 });
 
 export async function POST(request: NextRequest) {

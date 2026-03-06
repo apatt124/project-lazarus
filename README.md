@@ -87,13 +87,17 @@ Find information by meaning:
 
 ### Prerequisites
 
-- AWS Account
-- Node.js 18+
-- Python 3.11+
-- PostgreSQL client
-- AWS CLI v2
+- [ ] AWS Account
+- [ ] Node.js 18+
+- [ ] Python 3.11+
+- [ ] PostgreSQL client
+- [ ] AWS CLI v2
 
 ### Quick Start
+
+See [QUICK_START.md](QUICK_START.md) for a 5-minute setup guide.
+
+Or follow these steps:
 
 1. **Clone the repository**
    ```bash
@@ -107,34 +111,22 @@ Find information by meaning:
    cat infrastructure/setup-guide-rds.md
    ```
 
-3. **Install frontend dependencies**
+3. **Install and start frontend**
    ```bash
    cd frontend
    npm install
-   ```
-
-4. **Configure environment**
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your AWS settings
-   ```
-
-5. **Start development server**
-   ```bash
    npm run dev
    ```
 
-6. **Open in browser**
+4. **Open in browser**
    ```
    http://localhost:3737
    ```
 
-### AWS Setup
-
-See detailed guides in `/infrastructure`:
-- `setup-guide-rds.md` - Complete infrastructure setup
-- `cost-separation-guide.md` - Cost tracking setup
-- `deployment-checklist.md` - Deployment steps
+For detailed instructions, see:
+- [Quick Start Guide](QUICK_START.md)
+- [Infrastructure Setup](infrastructure/setup-guide-rds.md)
+- [Deployment Guide](DEPLOYMENT-GUIDE.md)
 
 ## Usage
 
@@ -200,11 +192,13 @@ Per-document costs:
 
 ## Documentation
 
-- `/docs` - Architecture, data models, guides
-- `/infrastructure` - AWS setup and deployment
-- `/scripts` - Helper scripts and tools
-- `ENABLE-CLAUDE-ACCESS.md` - AWS Bedrock setup
-- `CONVERSATIONAL-AI-COMPLETE.md` - AI implementation details
+- [Quick Start Guide](QUICK_START.md) - Get started in 5 minutes
+- [Deployment Guide](DEPLOYMENT-GUIDE.md) - Deploy to AWS Amplify
+- [Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md) - What was built and why
+- [Architecture](docs/architecture.md) - System design and data models
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+- [User Guide](frontend/USER_GUIDE.md) - How to use the interface
+- [Infrastructure Setup](infrastructure/setup-guide-rds.md) - AWS infrastructure deployment
 
 ## Development
 

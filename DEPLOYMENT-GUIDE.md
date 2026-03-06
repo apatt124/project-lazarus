@@ -32,9 +32,9 @@ In the Amplify Console:
 2. Add these variables:
 
 ```
-AWS_REGION=us-east-1
-AWS_LAMBDA_FUNCTION_NAME=lazarus-vector-search
-AWS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_AWS_REGION=us-east-1
+LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
+LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
 ```
 
 For AWS credentials, you have two options:
@@ -154,9 +154,9 @@ vercel
 # - Override settings? No
 
 # Set environment variables
-vercel env add AWS_REGION
-vercel env add AWS_LAMBDA_FUNCTION_NAME
-vercel env add AWS_S3_BUCKET
+vercel env add LAZARUS_AWS_REGION
+vercel env add LAZARUS_LAMBDA_FUNCTION
+vercel env add LAZARUS_S3_BUCKET
 vercel env add AWS_ACCESS_KEY_ID
 vercel env add AWS_SECRET_ACCESS_KEY
 
@@ -186,9 +186,9 @@ npm install
 
 # Create .env.local with your AWS credentials
 cat > .env.local << EOF
-AWS_REGION=us-east-1
-AWS_LAMBDA_FUNCTION_NAME=lazarus-vector-search
-AWS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_AWS_REGION=us-east-1
+LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
+LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
 AWS_ACCESS_KEY_ID=your_key
 AWS_SECRET_ACCESS_KEY=your_secret
 EOF

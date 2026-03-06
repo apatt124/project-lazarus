@@ -44,9 +44,9 @@ cp .env.example .env.local
 Edit `.env.local` if you need to override defaults:
 
 ```env
-AWS_REGION=us-east-1
-AWS_LAMBDA_FUNCTION_NAME=lazarus-vector-search
-AWS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_AWS_REGION=us-east-1
+LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
+LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
 ```
 
 ### Step 3: Start Development Server

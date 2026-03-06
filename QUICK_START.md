@@ -1,145 +1,140 @@
-# 🏥 Project Lazarus - Quick Start Guide
+# Quick Start - Project Lazarus
 
-## For Non-Technical Users
+## What You're Building
 
-### Starting the App (3 Easy Steps)
+A conversational AI assistant for your medical records. Upload documents, ask questions in natural language, and get instant answers with source citations.
 
-1. **Find the file** `START_LAZARUS.command` in the project folder
-2. **Double-click it**
-3. **Wait** for your web browser to open automatically
+## Prerequisites
 
-That's it! The app will open at `http://localhost:8501`
+- [ ] AWS infrastructure deployed (see [infrastructure/setup-guide-rds.md](infrastructure/setup-guide-rds.md))
+- [ ] Node.js 18+ installed
+- [ ] AWS CLI configured with credentials
+- [ ] Git repository cloned
 
-### Using the App
+## 5-Minute Setup
 
-**To Upload a Document:**
-1. Click "Upload Documents" on the left
-2. Drag and drop your medical document
-3. Fill in the details (doctor name, date, etc.)
+### Step 1: Install Dependencies (2 minutes)
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install packages
+npm install
+```
+
+### Step 2: Configure Environment (1 minute)
+
+```bash
+# Copy example environment file
+cp .env.example .env.local
+
+# Edit with your AWS settings (already configured if you followed setup guide)
+# LAZARUS_AWS_REGION=us-east-1
+# LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
+# LAZARUS_S3_BUCKET=project-lazarus-medical-docs-[your-account-id]
+```
+
+### Step 3: Start the Application (1 minute)
+
+```bash
+# Start development server
+npm run dev
+
+# Or use the convenience script
+./START_LAZARUS.command
+```
+
+The app will open at http://localhost:3737
+
+### Step 4: Upload Your First Document (1 minute)
+
+1. Click the "Upload" tab
+2. Drag and drop a medical document (PDF, image, or text file)
+3. Review auto-detected metadata
 4. Click "Upload Document"
 
-**To Ask Questions:**
-1. Click "Chat" on the left
-2. Type your question (e.g., "What was my blood pressure?")
-3. Press Enter
-4. Get your answer in seconds!
+### Step 5: Ask a Question (30 seconds)
 
-### Need Help?
+1. Click the "Chat" tab
+2. Type: "What documents do I have?"
+3. Get an instant AI-powered response with source citations
 
-See `frontend/USER_GUIDE.md` for detailed instructions.
+## Testing
 
----
-
-## For Technical Users
-
-### Quick Start
+Verify everything works:
 
 ```bash
-# Install dependencies
-cd frontend
-pip install -r requirements.txt
+# Test AWS Bedrock access
+./scripts/test-bedrock.sh
 
-# Run the app
-streamlit run app.py
+# Test vector search
+./scripts/test-search.sh "blood pressure"
+
+# Test full chat pipeline
+./scripts/test-chat.sh "What's in my records?"
 ```
 
-The app will open at `http://localhost:8501`
-
-### What's Included
-
-- **Chat Interface**: Semantic search over medical documents
-- **Document Upload**: Drag-and-drop with metadata
-- **Document History**: View all uploaded files
-- **AWS Integration**: Direct connection to your infrastructure
-
-### Architecture
-
+Expected output:
 ```
-User Browser (localhost:8501)
-    ↓
-Streamlit App (frontend/app.py)
-    ↓
-AWS Lambda (lazarus-vector-search)
-    ↓
-RDS PostgreSQL + pgvector
+✅ Bedrock access: OK
+✅ Search results: 3 documents found
+✅ Chat response: Based on your records...
 ```
 
-### Configuration
+## What's Deployed
 
-AWS credentials are read from:
-1. Environment variables
-2. `~/.aws/credentials` (AWS CLI)
-3. IAM role (if running on EC2)
+After setup, you have:
 
-No additional configuration needed if AWS CLI is set up.
+- Next.js React application running locally
+- AWS Lambda function for vector search
+- PostgreSQL database with pgvector extension
+- S3 bucket for encrypted document storage
+- AWS Bedrock integration for AI
 
-### Deployment to AWS App Runner
+## Next Steps
 
-When ready for remote access:
+- [User Guide](frontend/USER_GUIDE.md) - Learn all features
+- [Deployment Guide](DEPLOYMENT-GUIDE.md) - Deploy to AWS Amplify for remote access
+- [Architecture Documentation](docs/architecture.md) - Understand the system design
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+
+## Troubleshooting
+
+### Port 3737 already in use
 
 ```bash
-# See frontend/README.md for deployment instructions
-# Cost: ~$5-10/month
+# Kill existing process
+lsof -ti:3737 | xargs kill
+
+# Or use a different port
+npm run dev -- -p 3738
 ```
 
-### Customization
+### AWS credentials error
 
-Edit `frontend/app.py` to customize:
-- UI colors and layout
-- Document types
-- Search parameters
-- Additional features
-
-### Troubleshooting
-
-**App won't start:**
 ```bash
-pip install --upgrade streamlit boto3
-```
-
-**AWS credentials error:**
-```bash
+# Configure AWS CLI
 aws configure
+
+# Verify credentials
+aws sts get-caller-identity
 ```
 
-**Port in use:**
-```bash
-streamlit run app.py --server.port 8502
-```
-
-### Development
+### Dependencies won't install
 
 ```bash
-# Run with auto-reload
-streamlit run app.py --server.runOnSave true
-
-# View logs
-tail -f ~/.streamlit/logs/streamlit.log
+# Clear cache and reinstall
+rm -rf node_modules package-lock.json
+npm install
 ```
 
----
+## Cost Estimate
 
-## What's Next?
+Monthly infrastructure cost: $15-20
+- RDS PostgreSQL: ~$13
+- Lambda: ~$0.50
+- S3 Storage: ~$0.50
+- Bedrock AI: ~$1-5 (usage-based)
 
-### Immediate
-- ✅ Upload your first medical document
-- ✅ Test the chat interface
-- ✅ Verify search works
-
-### Soon
-- Deploy to AWS App Runner for remote access
-- Add provider management features
-- Integrate Google Calendar
-- Add document OCR for scanned images
-
-### Future
-- Mobile app
-- Voice interface
-- Automated document categorization
-- Health metrics tracking dashboard
-
----
-
-**Monthly Cost**: $13-16 (infrastructure only, app is free to run locally)
-
-**Support**: See `frontend/USER_GUIDE.md` or `docs/troubleshooting.md`
+Frontend is free when running locally.

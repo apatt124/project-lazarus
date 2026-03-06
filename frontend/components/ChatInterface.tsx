@@ -9,7 +9,18 @@ import remarkGfm from 'remark-gfm';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  sources?: Array<{ id: string; similarity: number; content: string }>;
+  sources?: Array<{ id: string; similarity: number; content: string; tier?: number }>;
+  intent?: 'medical' | 'general' | 'research' | 'conversation';
+  confidence?: {
+    overall: number;
+    reasoning: string;
+  };
+  source_quality?: {
+    tier1: number;
+    tier2: number;
+    tier3: number;
+    tier4Plus: number;
+  };
 }
 
 interface ChatInterfaceProps {
@@ -24,6 +35,7 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
   const [isLoading, setIsLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
+  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -65,16 +77,28 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({ 
+          query: input,
+          conversation_id: conversationId,
+          include_memory: true,
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
+        // Save conversation ID for future messages
+        if (!conversationId) {
+          setConversationId(data.conversation_id);
+        }
+
         const assistantMessage: Message = {
           role: 'assistant',
           content: data.answer,
           sources: data.sources,
+          intent: data.intent,
+          confidence: data.confidence,
+          source_quality: data.source_quality,
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
@@ -182,6 +206,51 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                 >
                   {message.role === 'assistant' ? (
                     <div className="markdown-content">
+                      {/* Intent and Confidence Badges */}
+                      {(message.intent || message.confidence) && (
+                        <div className="flex items-center gap-2 mb-3 pb-3 border-b" style={{ borderColor: theme.colors.border }}>
+                          {message.intent && (
+                            <span className="text-xs px-2 py-1 rounded-full" style={{ 
+                              backgroundColor: theme.colors.background,
+                              color: theme.colors.textSecondary 
+                            }}>
+                              {message.intent === 'medical' && '🏥 Medical'}
+                              {message.intent === 'research' && '🔍 Research'}
+                              {message.intent === 'general' && '💬 General'}
+                              {message.intent === 'conversation' && '💭 Chat'}
+                            </span>
+                          )}
+                          {message.confidence && (
+                            <span 
+                              className="text-xs px-2 py-1 rounded-full" 
+                              style={{ 
+                                backgroundColor: message.confidence.overall >= 0.8 
+                                  ? theme.colors.primary + '20' 
+                                  : message.confidence.overall >= 0.5 
+                                    ? theme.colors.background 
+                                    : '#ff990020',
+                                color: message.confidence.overall >= 0.8 
+                                  ? theme.colors.primary 
+                                  : message.confidence.overall >= 0.5 
+                                    ? theme.colors.textSecondary 
+                                    : '#ff9900'
+                              }}
+                              title={message.confidence.reasoning}
+                            >
+                              {message.confidence.overall >= 0.8 && '✓ High Confidence'}
+                              {message.confidence.overall >= 0.5 && message.confidence.overall < 0.8 && 'ℹ️ Moderate Confidence'}
+                              {message.confidence.overall < 0.5 && '⚠️ Low Confidence'}
+                            </span>
+                          )}
+                          {message.source_quality && (
+                            <span className="text-xs opacity-60">
+                              {message.source_quality.tier1 > 0 && `${message.source_quality.tier1} medical records`}
+                              {message.source_quality.tier2 > 0 && ` • ${message.source_quality.tier2} authoritative`}
+                              {message.source_quality.tier3 > 0 && ` • ${message.source_quality.tier3} professional`}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{

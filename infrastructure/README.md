@@ -1,50 +1,69 @@
-# Project Lazarus - Infrastructure Setup
+# Project Lazarus Infrastructure
 
-AWS infrastructure for HIPAA-compliant medical history AI agent.
+## Overview
+
+AWS infrastructure for Project Lazarus medical record management system. Includes Lambda functions, RDS PostgreSQL with pgvector, S3 storage, and AWS Bedrock integration.
+
+## Contents
+
+- [setup-guide-rds.md](setup-guide-rds.md) - Complete infrastructure deployment guide (recommended)
+- [setup-guide.md](setup-guide.md) - Alternative OpenSearch setup (deprecated, higher cost)
+- [cost-estimates.md](cost-estimates.md) - Monthly cost breakdown
+- [cost-separation-guide.md](cost-separation-guide.md) - Cost tracking setup
+- [GITHUB_SETUP.md](GITHUB_SETUP.md) - Repository configuration
+- [AMPLIFY_SETUP_STEPS.md](AMPLIFY_SETUP_STEPS.md) - AWS Amplify deployment
 
 ## Prerequisites
 
-- AWS CLI installed and configured
-- AWS BAA signed with your account
-- Bedrock model access granted (Claude 3.5 Sonnet)
-- Appropriate IAM permissions
+- [ ] AWS CLI installed and configured
+- [ ] AWS BAA signed with your account (for HIPAA compliance)
+- [ ] Bedrock model access granted (Claude 3 Haiku, Titan Embeddings)
+- [ ] Appropriate IAM permissions
 
-## Setup Steps
+## Quick Links
 
-Follow these steps in order. See [setup-guide-rds.md](setup-guide-rds.md) for detailed CLI commands using RDS + pgvector (recommended, ~$16/month).
+### Getting Started
+[Complete Setup Guide](setup-guide-rds.md) - Follow this for initial deployment
 
-Alternative: See [setup-guide.md](setup-guide.md) for OpenSearch Serverless setup (~$179/month).
+### Deployment
+[AWS Amplify Setup](AMPLIFY_SETUP_STEPS.md) - Deploy frontend to AWS
 
-### 1. Configuration
-- Set target region (us-east-1 or us-west-2 recommended)
-- Configure environment variables
+### Cost Management
+[Cost Estimates](cost-estimates.md) - Expected monthly costs (~$15-20)
+[Cost Separation](cost-separation-guide.md) - Track costs by project
 
-### 2. KMS Key
-- Create customer-managed KMS key for PHI encryption
-- Set key policy for S3 and Bedrock access
+## Common Tasks
 
-### 3. S3 Bucket
-- Create encrypted bucket for medical documents
-- Enable versioning and lifecycle policies
-- Block all public access
+### Deploy Infrastructure
+```bash
+# Follow the setup guide
+cat setup-guide-rds.md
 
-### 4. IAM Roles
-- Bedrock Knowledge Base execution role
-- Bedrock Agent execution role
-- Lambda function roles (if needed)
+# Or use the automated script
+./scripts/setup.sh
+```
 
-### 5. RDS PostgreSQL Database
-- Create db.t4g.micro instance
-- Enable pgvector extension
-- Initialize schema for medical data
+### Check Costs
+```bash
+# View current month costs
+./scripts/check-costs.sh
 
-### 6. Bedrock Agent
-- Create agent with Claude 3.5 Sonnet
-- Configure system prompt and instructions
-- Link Knowledge Base
+# View specific service costs
+aws ce get-cost-and-usage \
+  --time-period Start=2026-03-01,End=2026-03-31 \
+  --granularity MONTHLY \
+  --metrics BlendedCost \
+  --group-by Type=SERVICE
+```
 
-### 7. Production Alias
-- Create stable endpoint for application
+### Deploy Frontend
+```bash
+# Deploy to AWS Amplify
+./scripts/deploy-amplify.sh
+
+# Or follow manual steps
+cat AMPLIFY_SETUP_STEPS.md
+```
 
 ## Resource Tagging
 
@@ -52,10 +71,6 @@ All resources tagged with:
 - `Project=Lazarus`
 - `Environment=Personal`
 - `PHI=Yes`
-
-## Cost Estimates
-
-See [cost-estimates.md](cost-estimates.md) for monthly projections.
 
 ## Security Checklist
 
@@ -65,3 +80,7 @@ See [cost-estimates.md](cost-estimates.md) for monthly projections.
 - [ ] IAM roles follow least-privilege
 - [ ] CloudTrail logging enabled
 - [ ] VPC endpoints configured (optional but recommended)
+
+## Support
+
+For infrastructure issues, see [docs/troubleshooting.md](../docs/troubleshooting.md)

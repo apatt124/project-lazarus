@@ -8,19 +8,19 @@ import crypto from 'crypto';
 import AdmZip from 'adm-zip';
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.LAZARUS_AWS_REGION || 'us-east-1',
 });
 
 const lambda = new LambdaClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.LAZARUS_AWS_REGION || 'us-east-1',
 });
 
 const textract = new TextractClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.LAZARUS_AWS_REGION || 'us-east-1',
 });
 
 const bedrock = new BedrockRuntimeClient({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.LAZARUS_AWS_REGION || 'us-east-1',
 });
 
 function calculateHash(content: string): string {
@@ -111,7 +111,7 @@ async function checkForDuplicate(contentHash: string): Promise<any | null> {
   try {
     // Query Lambda to check if document with this hash exists
     const command = new InvokeCommand({
-      FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'lazarus-vector-search',
+      FunctionName: process.env.LAZARUS_LAMBDA_FUNCTION || 'lazarus-vector-search',
       Payload: JSON.stringify({
         apiPath: '/check-duplicate',
         httpMethod: 'POST',
@@ -219,7 +219,7 @@ async function processFile(
     const s3Key = `documents/${timestamp}-${fileName}`;
 
     // Upload to S3
-    const bucketName = process.env.AWS_S3_BUCKET || 'project-lazarus-medical-docs-677625843326';
+    const bucketName = process.env.LAZARUS_S3_BUCKET || 'project-lazarus-medical-docs-677625843326';
     await s3.send(
       new PutObjectCommand({
         Bucket: bucketName,
@@ -274,7 +274,7 @@ async function processFile(
     };
 
     const command = new InvokeCommand({
-      FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'lazarus-vector-search',
+      FunctionName: process.env.LAZARUS_LAMBDA_FUNCTION || 'lazarus-vector-search',
       Payload: JSON.stringify(lambdaPayload),
     });
 

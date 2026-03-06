@@ -65,20 +65,20 @@ Go to: **http://localhost:3737**
 ## Documentation Guide
 
 **New to the system?**
-- Read: [QUICK_START_REACT.md](QUICK_START_REACT.md)
-- Read: [frontend/USER_GUIDE.md](frontend/USER_GUIDE.md)
+- Read: [QUICK_START.md](QUICK_START.md) - 5-minute setup guide
+- Read: [frontend/USER_GUIDE.md](frontend/USER_GUIDE.md) - How to use the interface
 
-**Want to customize?**
-- Read: [frontend/SETUP.md](frontend/SETUP.md)
-- Read: [FRONTEND-REACT-READY.md](FRONTEND-REACT-READY.md)
+**Want to deploy?**
+- Read: [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) - AWS Amplify deployment
+- Read: [infrastructure/setup-guide-rds.md](infrastructure/setup-guide-rds.md) - Infrastructure setup
 
 **Need help?**
-- Read: [docs/troubleshooting.md](docs/troubleshooting.md)
-- Check: [DEPLOYMENT-COMPLETE-FINAL.md](DEPLOYMENT-COMPLETE-FINAL.md)
+- Read: [docs/troubleshooting.md](docs/troubleshooting.md) - Common issues
+- Read: [docs/IMPLEMENTATION_SUMMARY.md](docs/IMPLEMENTATION_SUMMARY.md) - What was built
 
 **Technical details?**
-- Read: [docs/architecture.md](docs/architecture.md)
-- Read: [REACT_MIGRATION_COMPLETE.md](REACT_MIGRATION_COMPLETE.md)
+- Read: [docs/architecture.md](docs/architecture.md) - System design
+- Read: [docs/data-model.md](docs/data-model.md) - Database schema
 
 ## Project Structure
 
