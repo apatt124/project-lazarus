@@ -1,0 +1,43 @@
+{
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "www.doctorlazarus.com",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "d45imc31s5p86.cloudfront.net"
+          }
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "develop.doctorlazarus.com",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "d45imc31s5p86.cloudfront.net"
+          }
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_344b6b2c9507b817532d48216ee13e8d.doctorlazarus.com",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+          {
+            "Value": "_85dff01ed09eac4321f4b313f475a613.jkddzztszm.acm-validations.aws."
+          }
+        ]
+      }
+    }
+  ]
+}

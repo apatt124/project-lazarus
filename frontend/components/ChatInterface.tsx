@@ -136,6 +136,11 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+          <img 
+            src="/logo.svg" 
+            alt="Project Lazarus" 
+            className="w-8 h-8"
+          />
           <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
             Project Lazarus
           </h1>
@@ -237,9 +242,9 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                               }}
                               title={message.confidence.reasoning}
                             >
-                              {message.confidence.overall >= 0.8 && '✓ High Confidence'}
-                              {message.confidence.overall >= 0.5 && message.confidence.overall < 0.8 && 'ℹ️ Moderate Confidence'}
-                              {message.confidence.overall < 0.5 && '⚠️ Low Confidence'}
+                              {message.confidence.overall >= 0.8 ? '✓ High Confidence' : 
+                               message.confidence.overall >= 0.5 ? 'ℹ️ Moderate Confidence' : 
+                               '⚠️ Low Confidence'}
                             </span>
                           )}
                           {message.source_quality && (
