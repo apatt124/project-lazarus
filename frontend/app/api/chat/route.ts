@@ -9,9 +9,15 @@ import {
 } from '@/lib/intent-classifier';
 import { 
   buildSystemPrompt, 
-  buildUserMessage, 
-  extractLearnings 
+  buildUserMessage 
 } from '@/lib/prompts';
+import {
+  searchRelevantMemories,
+  extractAndSaveLearnings,
+  getRelevantFacts,
+  formatMemoriesForContext,
+  formatFactsForContext
+} from '@/lib/memory';
 import { 
   calculateConfidence, 
   validateSource 
@@ -86,6 +92,7 @@ export async function POST(request: NextRequest) {
     let medicalDocuments: any[] = [];
     let webSources: any[] = [];
     let memories: any[] = [];
+    let userFacts: any[] = [];
 
     // Load medical documents if needed
     if (intentClassification.needsMedicalContext) {
@@ -102,9 +109,29 @@ export async function POST(request: NextRequest) {
 
     // Load memories if enabled
     if (include_memory) {
-      // TODO: Generate query embedding and search memories
-      // For now, skip memory search until we implement embedding generation
-      console.log('Memory search not yet implemented');
+      try {
+        memories = await searchRelevantMemories(
+          query,
+          intentClassification.primary,
+          10, // Limit to 10 most relevant memories
+          0.7 // 70% similarity threshold
+        );
+        console.log(`Found ${memories.length} relevant memories`);
+      } catch (error) {
+        console.error('Memory search error:', error);
+        // Continue without memories if search fails
+      }
+    }
+
+    // Load user facts for medical queries
+    if (intentClassification.primary === 'medical') {
+      try {
+        userFacts = await getRelevantFacts(intentClassification.primary);
+        console.log(`Found ${userFacts.length} relevant user facts`);
+      } catch (error) {
+        console.error('User facts retrieval error:', error);
+        // Continue without facts if retrieval fails
+      }
     }
 
     // TODO: Load web sources if needed
@@ -128,9 +155,22 @@ export async function POST(request: NextRequest) {
       memories
     );
 
+    // Add user facts to context if available
+    let fullUserMessage = userMessage;
+    if (userFacts.length > 0) {
+      const factsContext = formatFactsForContext(userFacts);
+      fullUserMessage = factsContext + userMessage;
+    }
+
+    // Add memories to context if available
+    if (memories.length > 0) {
+      const memoriesContext = formatMemoriesForContext(memories);
+      fullUserMessage = memoriesContext + fullUserMessage;
+    }
+
     // Step 7: Generate AI response
     console.log('Generating AI response...');
-    const aiResponse = await generateAIResponse(systemPrompt, userMessage);
+    const aiResponse = await generateAIResponse(systemPrompt, fullUserMessage);
     console.log(`Generated response: ${aiResponse.length} characters`);
 
     // Step 8: Validate and classify sources
@@ -177,12 +217,18 @@ export async function POST(request: NextRequest) {
     });
 
     // Step 11: Extract learnings for memory system
-    const learnings = extractLearnings(query, aiResponse, intentClassification.primary);
-    if (learnings.length > 0) {
-      console.log(`Extracted ${learnings.length} learnings for memory system`);
-      // TODO: Generate embeddings and save to memory_embeddings table
-      // For now, just log them
-      learnings.forEach(learning => console.log('Learning:', learning));
+    try {
+      const learningsCount = await extractAndSaveLearnings(
+        query,
+        aiResponse,
+        intentClassification.primary,
+        conversationId,
+        assistantMessage.id
+      );
+      console.log(`Extracted and saved ${learningsCount} learnings`);
+    } catch (error) {
+      console.error('Learning extraction error:', error);
+      // Continue even if learning extraction fails
     }
 
     // Step 12: Build response
