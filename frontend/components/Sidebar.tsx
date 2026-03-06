@@ -33,9 +33,17 @@ export default function Sidebar({ isOpen, onClose, theme, currentTheme, onThemeC
         {/* Header */}
         <div className="p-4 border-b" style={{ borderColor: theme.colors.border }}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold" style={{ color: theme.colors.text }}>
-              Project Lazarus
-            </h2>
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logo.svg" 
+                alt="Project Lazarus" 
+                className="w-6 h-6"
+                style={{ filter: theme.colors.background === '#0a0a0a' ? 'brightness(0) invert(1)' : 'none' }}
+              />
+              <h2 className="text-xl font-bold" style={{ color: theme.colors.text }}>
+                Project Lazarus
+              </h2>
+            </div>
             <button
               onClick={onClose}
               className="lg:hidden p-2 rounded-lg hover:bg-white/10"

@@ -136,6 +136,12 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+          <img 
+            src="/logo.svg" 
+            alt="Project Lazarus" 
+            className="w-8 h-8"
+            style={{ filter: theme.colors.background === '#0a0a0a' ? 'brightness(0) invert(1)' : 'none' }}
+          />
           <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
             Project Lazarus
           </h1>
