@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { themes, defaultTheme } from '../lib/themes';
+import { useState } from 'react';
+import { themes } from '../lib/themes';
 
 interface ThemeSelectorProps {
   currentTheme: string;
