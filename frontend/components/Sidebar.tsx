@@ -38,7 +38,6 @@ export default function Sidebar({ isOpen, onClose, theme, currentTheme, onThemeC
                 src="/logo.svg" 
                 alt="Project Lazarus" 
                 className="w-6 h-6"
-                style={{ filter: theme.colors.background === '#0a0a0a' ? 'brightness(0) invert(1)' : 'none' }}
               />
               <h2 className="text-xl font-bold" style={{ color: theme.colors.text }}>
                 Project Lazarus

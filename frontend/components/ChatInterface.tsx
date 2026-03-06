@@ -140,7 +140,6 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
             src="/logo.svg" 
             alt="Project Lazarus" 
             className="w-8 h-8"
-            style={{ filter: theme.colors.background === '#0a0a0a' ? 'brightness(0) invert(1)' : 'none' }}
           />
           <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
             Project Lazarus

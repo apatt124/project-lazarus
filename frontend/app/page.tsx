@@ -71,20 +71,12 @@ export default function LoginPage() {
         >
           {/* Logo/Title */}
           <div className="text-center mb-8">
-            <div className="mb-4">
-              <div 
-                className="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`,
-                }}
-              >
-                <img 
-                  src="/logo.svg" 
-                  alt="Project Lazarus Logo" 
-                  className="w-10 h-10"
-                  style={{ filter: 'brightness(0) invert(1)' }}
-                />
-              </div>
+            <div className="mb-4 flex justify-center">
+              <img 
+                src="/logo.svg" 
+                alt="Project Lazarus Logo" 
+                className="w-16 h-16"
+              />
             </div>
             <h1 
               className="text-3xl font-bold mb-2"
