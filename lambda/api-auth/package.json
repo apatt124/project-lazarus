@@ -1,0 +1,7 @@
+{
+  "name": "lazarus-api-auth",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Auth API Lambda for Project Lazarus",
+  "main": "index.mjs"
+}

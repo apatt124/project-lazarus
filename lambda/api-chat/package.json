@@ -1,0 +1,13 @@
+{
+  "name": "lazarus-api-chat",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Chat API Lambda for Project Lazarus",
+  "main": "index.mjs",
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.515.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.515.0",
+    "@aws-sdk/client-secrets-manager": "^3.515.0",
+    "pg": "^8.11.0"
+  }
+}

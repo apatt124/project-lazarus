@@ -8,8 +8,9 @@ Complete documentation for Project Lazarus, a conversational AI assistant for ma
 
 ### Getting Started
 - [Quick Start Guide](../QUICK_START.md) - Get up and running in 5 minutes
-- [User Guide](../frontend/USER_GUIDE.md) - How to use the interface
+- [User Guide](../old-frontend-docs/USER_GUIDE.md) - How to use the interface
 - [Deployment Guide](../DEPLOYMENT-GUIDE.md) - Deploy to AWS Amplify
+- [Frontend Moved to Root](FRONTEND_MOVED_TO_ROOT.md) - Repository restructure notes
 
 ### Architecture & Design
 - [Architecture](architecture.md) - System design and components
@@ -31,6 +32,8 @@ Complete documentation for Project Lazarus, a conversational AI assistant for ma
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
 - [Security Best Practices](security-best-practices.md) - Security guidelines
 - [CLI Tools Upgraded](CLI_TOOLS_UPGRADED.md) - Command-line utilities
+- [Build Verification](BUILD_VERIFICATION.md) - Build system validation
+- [Login System](LOGIN_SYSTEM.md) - Authentication documentation
 
 ### Planning & Roadmap
 - [Future Enhancements](future-enhancements.md) - Planned features
@@ -43,6 +46,8 @@ Complete documentation for Project Lazarus, a conversational AI assistant for ma
 - [Cost Estimates](../infrastructure/cost-estimates.md) - Monthly costs
 - [GitHub Setup](../infrastructure/GITHUB_SETUP.md) - Repository configuration
 - [Amplify Setup](../infrastructure/AMPLIFY_SETUP_STEPS.md) - Hosting deployment
+- [Amplify Multi-Branch Setup](AMPLIFY_MULTI_BRANCH_SETUP.md) - Branch deployments
+- [Amplify Environment Variables](AMPLIFY_ENV_VARS_FIXED.md) - Configuration notes
 
 ## Quick Links
 

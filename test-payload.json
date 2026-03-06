@@ -1,9 +1,0 @@
-{
-  "apiPath": "/search",
-  "httpMethod": "POST",
-  "parameters": [
-    {"name": "query", "value": "medical history"},
-    {"name": "limit", "value": "10"},
-    {"name": "threshold", "value": "0.01"}
-  ]
-}

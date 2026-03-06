@@ -2,7 +2,6 @@
 .env
 .env.local
 .env*.local
-frontend/.env.local
 
 # Secrets and credentials
 *.pem
@@ -14,12 +13,11 @@ frontend/.env.local
 
 # Node modules
 node_modules/
-frontend/node_modules/
 
 # Next.js
-frontend/.next/
-frontend/out/
-frontend/build/
+.next/
+out/
+build/
 
 # Python
 __pycache__/
@@ -80,3 +78,7 @@ test_*.json
 # Temporary files
 /tmp/
 *.bak
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

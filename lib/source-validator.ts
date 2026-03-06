@@ -176,31 +176,46 @@ export function calculateConfidence(sources: Source[]): ConfidenceScore {
 
   // Calculate base confidence from source quality
   let baseConfidence = 0;
-  baseConfidence += tier1Count * 0.35; // Medical records are highest value
-  baseConfidence += tier2Count * 0.25; // Authoritative sources
-  baseConfidence += tier3Count * 0.15; // Professional sources
-  baseConfidence += tier4PlusCount * 0.05; // General sources
+  
+  // Medical records (Tier 1) should always result in high confidence
+  if (tier1Count > 0) {
+    baseConfidence = 0.85; // Start at 85% for any medical records
+    // Add bonus for multiple medical records (up to 95%)
+    const recordBonus = Math.min(0.10, tier1Count * 0.01);
+    baseConfidence += recordBonus;
+  } else if (tier2Count > 0) {
+    baseConfidence = 0.75; // Authoritative sources
+    const bonus = Math.min(0.10, tier2Count * 0.02);
+    baseConfidence += bonus;
+  } else if (tier3Count > 0) {
+    baseConfidence = 0.60; // Professional sources
+    const bonus = Math.min(0.10, tier3Count * 0.02);
+    baseConfidence += bonus;
+  } else {
+    baseConfidence = 0.40; // General sources
+    const bonus = Math.min(0.10, tier4PlusCount * 0.01);
+    baseConfidence += bonus;
+  }
 
   // Cap at 1.0
   baseConfidence = Math.min(1.0, baseConfidence);
 
-  // Adjust for source diversity (multiple sources increase confidence)
-  const diversityBonus = Math.min(0.1, sources.length * 0.02);
-  baseConfidence += diversityBonus;
-
   // Check for conflicts
   const conflictAnalysis = detectConflicts(sources);
   if (conflictAnalysis.hasConflicts) {
-    baseConfidence *= 0.7; // Reduce confidence by 30% if conflicts exist
+    baseConfidence *= 0.9; // Reduce confidence by 10% if conflicts exist (was 30%)
   }
 
-  // Check for age warnings
+  // Check for age warnings (but don't penalize medical records heavily)
   const warnings: string[] = [];
   sources.forEach(source => {
     const ageWarnings = checkSourceAge(source.publishDate, 'medical');
     warnings.push(...ageWarnings);
-    if (ageWarnings.length > 0) {
-      baseConfidence *= 0.95; // Slight reduction for each age warning
+    // Only slight reduction for age warnings on medical records
+    if (ageWarnings.length > 0 && tier1Count > 0) {
+      baseConfidence *= 0.98; // Only 2% reduction for medical records
+    } else if (ageWarnings.length > 0) {
+      baseConfidence *= 0.95; // 5% reduction for other sources
     }
   });
 
