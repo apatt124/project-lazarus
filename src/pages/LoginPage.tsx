@@ -32,8 +32,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with Lambda URL
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
