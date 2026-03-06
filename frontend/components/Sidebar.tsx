@@ -102,7 +102,7 @@ export default function Sidebar({ isOpen, onClose, theme, currentTheme, onThemeC
                 }`}
                 style={{
                   backgroundColor: currentTheme === key ? theme.colors.primary + '20' : 'transparent',
-                  ringColor: theme.colors.primary,
+                  ...(currentTheme === key && { '--tw-ring-color': theme.colors.primary } as React.CSSProperties),
                 }}
               >
                 <div
