@@ -5,6 +5,7 @@ import { TextractClient, DetectDocumentTextCommand } from '@aws-sdk/client-textr
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import crypto from 'crypto';
+import AdmZip from 'adm-zip';
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION || 'us-east-1',
@@ -136,33 +137,23 @@ async function checkForDuplicate(contentHash: string): Promise<any | null> {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function processFile(
+  fileName: string,
+  buffer: Buffer,
+  fileType: string,
+  metadata: any
+): Promise<{ success: boolean; documentId?: string; s3Key?: string; error?: string; duplicate?: boolean }> {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const metadataStr = formData.get('metadata') as string;
-
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
-    }
-
-    const metadata = metadataStr ? JSON.parse(metadataStr) : {};
-
-    // Read file content
-    const buffer = Buffer.from(await file.arrayBuffer());
     
     // Extract text based on file type
     let content: string;
-    const fileType = file.type.toLowerCase();
-    const fileName = file.name.toLowerCase();
+    const lowerFileName = fileName.toLowerCase();
+    const lowerFileType = fileType.toLowerCase();
     
-    console.log(`Processing file: ${file.name}, type: ${fileType}, size: ${buffer.length}`);
+    console.log(`Processing file: ${fileName}, type: ${fileType}, size: ${buffer.length}`);
     
     // Determine extraction method based on file type
-    if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+    if (lowerFileType === 'application/pdf' || lowerFileName.endsWith('.pdf')) {
       console.log('Attempting PDF text extraction...');
       try {
         content = await extractTextFromPDF(buffer);
@@ -176,13 +167,13 @@ export async function POST(request: NextRequest) {
         console.log('PDF extraction failed, falling back to Textract...');
         content = await extractTextWithTextract(buffer);
       }
-    } else if (fileType.startsWith('image/') || 
-               fileName.match(/\.(jpg|jpeg|png|gif|bmp|tiff|webp)$/)) {
+    } else if (lowerFileType.startsWith('image/') || 
+               lowerFileName.match(/\.(jpg|jpeg|png|gif|bmp|tiff|webp)$/)) {
       // Images - use Claude Vision for best results
       console.log('Image detected, using Claude Vision...');
-      const mimeType = fileType || 'image/png';
+      const mimeType = lowerFileType || 'image/png';
       content = await extractTextWithVision(buffer, mimeType);
-    } else if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
+    } else if (lowerFileType === 'text/plain' || lowerFileName.endsWith('.txt')) {
       // Plain text files
       content = buffer.toString('utf-8');
     } else {
@@ -191,23 +182,20 @@ export async function POST(request: NextRequest) {
       try {
         content = await extractTextWithTextract(buffer);
       } catch (error) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: `Unsupported file type: ${fileType}. Please upload PDF, image, or text files.` 
-          },
-          { status: 400 }
-        );
+        return {
+          success: false,
+          error: `Unsupported file type: ${fileType}. Please upload PDF, image, or text files.`
+        };
       }
     }
 
     console.log(`Extracted ${content.length} characters of text`);
 
     if (!content || content.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No text content could be extracted from the file' },
-        { status: 400 }
-      );
+      return {
+        success: false,
+        error: 'No text content could be extracted from the file'
+      };
     }
 
     // Calculate content hash for duplicate detection
@@ -218,18 +206,17 @@ export async function POST(request: NextRequest) {
     const existingDoc = await checkForDuplicate(contentHash);
     if (existingDoc) {
       console.log(`Duplicate found: ${existingDoc.id}`);
-      return NextResponse.json({
+      return {
         success: true,
         documentId: existingDoc.id,
         s3Key: existingDoc.s3_key,
         duplicate: true,
-        message: 'This document has already been uploaded',
-      });
+      };
     }
 
     // Generate S3 key
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const s3Key = `documents/${timestamp}-${file.name}`;
+    const s3Key = `documents/${timestamp}-${fileName}`;
 
     // Upload to S3
     const bucketName = process.env.AWS_S3_BUCKET || 'project-lazarus-medical-docs-677625843326';
@@ -238,7 +225,7 @@ export async function POST(request: NextRequest) {
         Bucket: bucketName,
         Key: s3Key,
         Body: buffer,
-        ContentType: file.type,
+        ContentType: fileType,
         Metadata: {
           documentType: metadata.documentType || 'other',
           provider: metadata.provider || '',
@@ -248,16 +235,14 @@ export async function POST(request: NextRequest) {
     );
 
     // Store in database with chunking for large documents
-    // For documents with 100+ pages (or 100,000+ characters), we'll chunk them
-    const chunkSize = 10000; // 10,000 characters per chunk (roughly 5-7 pages)
+    const chunkSize = 10000;
     const chunks: string[] = [];
     
     if (content.length > chunkSize) {
-      // Split into overlapping chunks for better context
-      const overlapSize = 500; // 500 character overlap between chunks
+      const overlapSize = 500;
       for (let i = 0; i < content.length; i += (chunkSize - overlapSize)) {
         const chunk = content.substring(i, Math.min(i + chunkSize, content.length));
-        if (chunk.trim().length > 100) { // Only add non-empty chunks
+        if (chunk.trim().length > 100) {
           chunks.push(chunk);
         }
       }
@@ -266,7 +251,7 @@ export async function POST(request: NextRequest) {
       chunks.push(content);
     }
     
-    // Store each chunk as a separate document with chunk metadata
+    // Store each chunk
     const lambdaPayload = {
       apiPath: '/store-chunked',
       httpMethod: 'POST',
@@ -277,7 +262,7 @@ export async function POST(request: NextRequest) {
           name: 'metadata',
           value: JSON.stringify({
             ...metadata,
-            filename: file.name,
+            filename: fileName,
             uploadedAt: new Date().toISOString(),
             contentHash: contentHash,
             fileSize: buffer.length,
@@ -302,13 +287,136 @@ export async function POST(request: NextRequest) {
     );
 
     if (responseBody.success) {
-      return NextResponse.json({
+      return {
         success: true,
         documentId: responseBody.document_id,
         s3Key: responseBody.s3_key,
-      });
+      };
     } else {
       throw new Error(responseBody.error || 'Failed to store document');
+    }
+  } catch (error) {
+    console.error('File processing error:', error);
+    return {
+      success: false,
+      error: String(error)
+    };
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
+    const metadataStr = formData.get('metadata') as string;
+
+    if (!file) {
+      return NextResponse.json(
+        { success: false, error: 'No file provided' },
+        { status: 400 }
+      );
+    }
+
+    const metadata = metadataStr ? JSON.parse(metadataStr) : {};
+    const buffer = Buffer.from(await file.arrayBuffer());
+    
+    // Check if it's a zip file
+    const isZip = file.type === 'application/zip' || 
+                  file.type === 'application/x-zip-compressed' ||
+                  file.name.toLowerCase().endsWith('.zip');
+    
+    if (isZip) {
+      console.log('Processing ZIP file...');
+      
+      try {
+        const zip = new AdmZip(buffer);
+        const zipEntries = zip.getEntries();
+        
+        const results: any[] = [];
+        let successCount = 0;
+        let errorCount = 0;
+        let duplicateCount = 0;
+        
+        for (const entry of zipEntries) {
+          // Skip directories and hidden files
+          if (entry.isDirectory || entry.entryName.startsWith('__MACOSX') || entry.name.startsWith('.')) {
+            continue;
+          }
+          
+          console.log(`Processing: ${entry.entryName}`);
+          
+          // Get file buffer
+          const fileBuffer = entry.getData();
+          
+          // Determine file type from extension
+          const fileName = entry.name;
+          let fileType = 'application/octet-stream';
+          
+          if (fileName.endsWith('.pdf')) fileType = 'application/pdf';
+          else if (fileName.endsWith('.txt')) fileType = 'text/plain';
+          else if (fileName.match(/\.(jpg|jpeg)$/i)) fileType = 'image/jpeg';
+          else if (fileName.endsWith('.png')) fileType = 'image/png';
+          else if (fileName.endsWith('.gif')) fileType = 'image/gif';
+          else if (fileName.endsWith('.bmp')) fileType = 'image/bmp';
+          else if (fileName.match(/\.(tiff|tif)$/i)) fileType = 'image/tiff';
+          else if (fileName.endsWith('.webp')) fileType = 'image/webp';
+          
+          // Process the file
+          const result = await processFile(fileName, fileBuffer, fileType, metadata);
+          
+          if (result.success) {
+            if (result.duplicate) {
+              duplicateCount++;
+            } else {
+              successCount++;
+            }
+          } else {
+            errorCount++;
+          }
+          
+          results.push({
+            fileName: entry.entryName,
+            ...result
+          });
+        }
+        
+        console.log(`ZIP processing complete: ${successCount} uploaded, ${duplicateCount} duplicates, ${errorCount} errors`);
+        
+        return NextResponse.json({
+          success: true,
+          isZip: true,
+          totalFiles: results.length,
+          successCount,
+          duplicateCount,
+          errorCount,
+          results,
+        });
+        
+      } catch (zipError) {
+        console.error('ZIP extraction error:', zipError);
+        return NextResponse.json(
+          { success: false, error: `Failed to extract ZIP file: ${zipError}` },
+          { status: 400 }
+        );
+      }
+    }
+    
+    // Single file processing (existing logic)
+    const result = await processFile(file.name, buffer, file.type, metadata);
+    
+    if (result.success) {
+      return NextResponse.json({
+        success: true,
+        documentId: result.documentId,
+        s3Key: result.s3Key,
+        duplicate: result.duplicate,
+        message: result.duplicate ? 'This document has already been uploaded' : undefined,
+      });
+    } else {
+      return NextResponse.json(
+        { success: false, error: result.error },
+        { status: 400 }
+      );
     }
   } catch (error) {
     console.error('Upload API error:', error);

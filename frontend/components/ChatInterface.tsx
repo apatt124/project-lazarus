@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Theme } from '@/lib/themes';
 import DocumentUpload from './DocumentUpload';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -21,10 +23,23 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const toggleSources = (messageIndex: number) => {
+    setExpandedSources((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageIndex)) {
+        newSet.delete(messageIndex);
+      } else {
+        newSet.add(messageIndex);
+      }
+      return newSet;
+    });
   };
 
   useEffect(() => {
@@ -165,22 +180,68 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                     border: message.role === 'assistant' ? `1px solid ${theme.colors.border}` : 'none',
                   }}
                 >
-                  <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    <div className="markdown-content">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({ node, ...props }) => <h1 {...props} />,
+                          h2: ({ node, ...props }) => <h2 {...props} />,
+                          h3: ({ node, ...props }) => <h3 {...props} />,
+                          p: ({ node, ...props }) => <p {...props} />,
+                          ul: ({ node, ...props }) => <ul {...props} />,
+                          ol: ({ node, ...props }) => <ol {...props} />,
+                          li: ({ node, ...props }) => <li {...props} />,
+                          strong: ({ node, ...props }) => <strong style={{ color: theme.colors.primary }} {...props} />,
+                          code: ({ node, inline, ...props }: any) => 
+                            inline ? (
+                              <code className="px-1.5 py-0.5 rounded text-sm" style={{ backgroundColor: theme.colors.background }} {...props} />
+                            ) : (
+                              <code className="block p-3 rounded-lg text-sm overflow-x-auto" style={{ backgroundColor: theme.colors.background }} {...props} />
+                            ),
+                          blockquote: ({ node, ...props }) => (
+                            <blockquote className="border-l-4 pl-4" style={{ borderColor: theme.colors.primary }} {...props} />
+                          ),
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                  )}
                   {message.sources && message.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t space-y-2" style={{ borderColor: theme.colors.border }}>
-                      <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                        Sources ({message.sources.length})
-                      </p>
-                      {message.sources.map((source, idx) => (
-                        <div key={idx} className="text-xs opacity-75 p-3 rounded-xl" style={{ backgroundColor: theme.colors.background }}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium">
-                              {(source.similarity * 100).toFixed(0)}% match
-                            </span>
-                          </div>
-                          <p className="line-clamp-2">{source.content}</p>
+                    <div className="mt-4 pt-4 border-t" style={{ borderColor: theme.colors.border }}>
+                      <button
+                        onClick={() => toggleSources(index)}
+                        className="flex items-center justify-between w-full text-left hover:opacity-80 transition-opacity"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                          Sources ({message.sources.length})
+                        </p>
+                        <svg
+                          className={`w-4 h-4 transition-transform ${expandedSources.has(index) ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {expandedSources.has(index) && (
+                        <div className="mt-2 space-y-2 animate-slide-in">
+                          {message.sources.map((source, idx) => (
+                            <div key={idx} className="text-xs opacity-75 p-3 rounded-xl" style={{ backgroundColor: theme.colors.background }}>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-medium">
+                                  {(source.similarity * 100).toFixed(0)}% match
+                                </span>
+                              </div>
+                              <p className="line-clamp-2">{source.content}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                 </div>

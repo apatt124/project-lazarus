@@ -302,8 +302,9 @@ def lambda_handler(event: dict, context) -> dict:
         if api_path == '/search' and http_method == 'POST':
             query = params.get('query', '')
             limit = int(params.get('limit', 10))
+            threshold = float(params.get('threshold', 0.01))  # Lower default threshold for more results
             
-            results = search_documents(query, limit=limit)
+            results = search_documents(query, limit=limit, threshold=threshold)
             
             response_body = {
                 'success': True,

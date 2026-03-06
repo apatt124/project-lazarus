@@ -15,6 +15,7 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
   const [uploadStatus, setUploadStatus] = useState<{
     type: 'success' | 'error' | null;
     message: string;
+    zipResults?: any[];
   }>({ type: null, message: '' });
   const [metadata, setMetadata] = useState({
     documentType: 'visit_notes',
@@ -105,7 +106,14 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
       const data = await response.json();
 
       if (data.success) {
-        if (data.duplicate) {
+        if (data.isZip) {
+          // Handle zip file results
+          setUploadStatus({
+            type: 'success',
+            message: `ZIP file processed: ${data.successCount} uploaded, ${data.duplicateCount} duplicates, ${data.errorCount} errors`,
+            zipResults: data.results,
+          });
+        } else if (data.duplicate) {
           setUploadStatus({
             type: 'success',
             message: `This document was already uploaded previously. No duplicate created.`,
@@ -156,6 +164,8 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
       'image/bmp': ['.bmp'],
       'image/tiff': ['.tiff', '.tif'],
       'image/webp': ['.webp'],
+      'application/zip': ['.zip'],
+      'application/x-zip-compressed': ['.zip'],
     },
     maxFiles: 1,
     disabled: uploading || analyzing,
@@ -233,7 +243,7 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
                 Drag & drop or click to browse
               </p>
               <p className="text-sm" style={{ color: theme.colors.textSecondary }}>
-                TXT, PDF, DOC, DOCX, PNG, JPG, and more
+                TXT, PDF, DOC, DOCX, PNG, JPG, ZIP, and more
               </p>
             </div>
           )}
@@ -369,7 +379,43 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             )}
-            <p className="text-sm">{uploadStatus.message}</p>
+            <div className="flex-1">
+              <p className="text-sm font-medium">{uploadStatus.message}</p>
+              
+              {/* Show detailed results for ZIP files */}
+              {uploadStatus.zipResults && uploadStatus.zipResults.length > 0 && (
+                <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
+                  {uploadStatus.zipResults.map((result, idx) => (
+                    <div 
+                      key={idx}
+                      className="text-xs p-2 rounded flex items-center gap-2"
+                      style={{ backgroundColor: theme.colors.background }}
+                    >
+                      {result.success ? (
+                        result.duplicate ? (
+                          <span className="text-yellow-500">⚠️</span>
+                        ) : (
+                          <span className="text-green-500">✓</span>
+                        )
+                      ) : (
+                        <span className="text-red-500">✗</span>
+                      )}
+                      <span className="flex-1 truncate" style={{ color: theme.colors.text }}>
+                        {result.fileName}
+                      </span>
+                      {result.duplicate && (
+                        <span className="text-yellow-600 text-xs">duplicate</span>
+                      )}
+                      {result.error && (
+                        <span className="text-red-600 text-xs truncate max-w-xs" title={result.error}>
+                          {result.error}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
