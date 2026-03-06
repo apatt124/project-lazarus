@@ -237,9 +237,9 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                               }}
                               title={message.confidence.reasoning}
                             >
-                              {message.confidence.overall >= 0.8 && '✓ High Confidence'}
-                              {message.confidence.overall >= 0.5 && message.confidence.overall < 0.8 && 'ℹ️ Moderate Confidence'}
-                              {message.confidence.overall < 0.5 && '⚠️ Low Confidence'}
+                              {message.confidence.overall >= 0.8 ? '✓ High Confidence' : 
+                               message.confidence.overall >= 0.5 ? 'ℹ️ Moderate Confidence' : 
+                               '⚠️ Low Confidence'}
                             </span>
                           )}
                           {message.source_quality && (
