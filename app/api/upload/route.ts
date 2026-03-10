@@ -219,7 +219,7 @@ async function processFile(
     const s3Key = `documents/${timestamp}-${fileName}`;
 
     // Upload to S3
-    const bucketName = process.env.LAZARUS_S3_BUCKET || 'project-lazarus-medical-docs-677625843326';
+    const bucketName = process.env.LAZARUS_S3_BUCKET;
     await s3.send(
       new PutObjectCommand({
         Bucket: bucketName,

@@ -92,13 +92,26 @@ export default function DocumentUpload({ theme, onClose }: DocumentUploadProps) 
     setUploadStatus({ type: null, message: '' });
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('metadata', JSON.stringify(metadata));
+      // Read file as base64
+      const reader = new FileReader();
+      reader.readAsDataURL(selectedFile);
+      
+      await new Promise((resolve, reject) => {
+        reader.onload = resolve;
+        reader.onerror = reject;
+      });
+
+      const base64Data = (reader.result as string).split(',')[1];
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/upload`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          fileType: selectedFile.type,
+          fileData: base64Data,
+          metadata: metadata,
+        }),
       });
 
       const data = await response.json();

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Theme } from '../lib/themes';
 import DocumentUpload from './DocumentUpload';
+import UserFactsPanel from './UserFactsPanel';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -19,21 +20,33 @@ interface Message {
     tier3: number;
     tier4Plus: number;
   };
+  created_at?: string;
+  processing_time_ms?: number;
+  model_version?: string;
 }
 
 interface ChatInterfaceProps {
   theme: Theme;
   onMenuClick: () => void;
-  onNewChat: (title: string) => void;
+  conversationId?: string;
+  onConversationChange: (conversationId: string, title: string) => void;
+  onNewConversation: () => void;
 }
 
-export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInterfaceProps) {
+export default function ChatInterface({ 
+  theme, 
+  onMenuClick, 
+  conversationId: externalConversationId,
+  onConversationChange,
+  onNewConversation 
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const [conversationId, setConversationId] = useState<string | undefined>(externalConversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -52,32 +65,123 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
     });
   };
 
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffSecs < 10) return 'Just now';
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatProcessingTime = (ms?: number) => {
+    if (!ms) return '';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load conversation when external conversationId changes
+  useEffect(() => {
+    if (externalConversationId && externalConversationId !== conversationId) {
+      loadConversation(externalConversationId);
+    }
+  }, [externalConversationId]);
+
+  const loadConversation = async (convId: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/conversations/${convId}`);
+      const data = await response.json();
+      
+      if (data.success && data.conversation) {
+        setConversationId(convId);
+        
+        // Convert conversation messages to chat messages
+        const loadedMessages: Message[] = data.conversation.messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content,
+          sources: msg.sources || [],
+          intent: msg.intent,
+          confidence: msg.confidence_score ? {
+            overall: msg.confidence_score,
+            reasoning: msg.confidence_reasoning || ''
+          } : undefined,
+          created_at: msg.created_at,
+          processing_time_ms: msg.processing_time_ms,
+          model_version: msg.model_version,
+        }));
+        
+        setMessages(loadedMessages);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  const handleNewChat = () => {
+    setMessages([]);
+    setConversationId(undefined);
+    setInput('');
+    onNewConversation();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = { role: 'user', content: input };
+    const userMessage: Message = { 
+      role: 'user', 
+      content: input,
+      created_at: new Date().toISOString()
+    };
     setMessages((prev) => [...prev, userMessage]);
     
-    // Save to chat history
-    if (messages.length === 0) {
-      onNewChat(input.substring(0, 50));
-    }
-    
+    const userQuery = input;
     setInput('');
     setIsLoading(true);
+
+    // Create new conversation if this is the first message
+    let currentConvId = conversationId;
+    if (!currentConvId && messages.length === 0) {
+      try {
+        const convResponse = await fetch(`${import.meta.env.VITE_API_URL}/conversations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            title: userQuery.substring(0, 50) + (userQuery.length > 50 ? '...' : '')
+          }),
+        });
+        const convData = await convResponse.json();
+        if (convData.success && convData.conversation?.id) {
+          currentConvId = convData.conversation.id;
+          setConversationId(convData.conversation.id);
+          onConversationChange(convData.conversation.id, convData.conversation.title);
+        }
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+      }
+    }
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query: input,
-          conversation_id: conversationId,
+          query: userQuery,
+          conversation_id: currentConvId,
           include_memory: true,
         }),
       });
@@ -85,11 +189,6 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
       const data = await response.json();
 
       if (data.success) {
-        // Save conversation ID for future messages
-        if (!conversationId) {
-          setConversationId(data.conversation_id);
-        }
-
         const assistantMessage: Message = {
           role: 'assistant',
           content: data.answer,
@@ -97,8 +196,18 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
           intent: data.intent,
           confidence: data.confidence,
           source_quality: data.source_quality,
+          created_at: new Date().toISOString(),
+          processing_time_ms: data.processing_time_ms,
+          model_version: data.model_version,
         };
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Trigger memory processing in background (don't await)
+        if (currentConvId) {
+          fetch(`${import.meta.env.VITE_API_URL}/memory/process/${currentConvId}`, {
+            method: 'POST',
+          }).catch(err => console.error('Memory processing failed:', err));
+        }
       } else {
         throw new Error(data.error || 'Failed to get response');
       }
@@ -106,6 +215,7 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
       const errorMessage: Message = {
         role: 'assistant',
         content: `Sorry, I encountered an error: ${error}`,
+        created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -120,10 +230,18 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
     { icon: '💊', label: 'Medications', action: () => setInput('What medications am I currently taking?') },
   ];
 
+  // Add new chat button to header
+  const showNewChatButton = messages.length > 0;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
+      {showProfile ? (
+        /* Profile View - Full Width */
+        <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
+      ) : (
+        <>
+          {/* Header */}
+          <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
@@ -144,6 +262,25 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowProfile(!showProfile)}
+            className="p-2 rounded-lg transition-all hover:bg-white/10"
+            style={{ color: showProfile ? theme.colors.primary : theme.colors.textSecondary }}
+            title="View your medical profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </button>
+          {showNewChatButton && (
+            <button
+              onClick={handleNewChat}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+              style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}
+            >
+              New Chat
+            </button>
+          )}
           <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}>
             HIPAA Compliant
           </span>
@@ -282,6 +419,32 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                   ) : (
                     <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
                   )}
+                  
+                  {/* Message Footer - Timestamp and Metadata */}
+                  <div className="flex items-center gap-2 mt-3 pt-2 border-t" style={{ borderColor: theme.colors.border + '40' }}>
+                    {message.created_at && (
+                      <span className="text-xs opacity-60">
+                        {formatTimestamp(message.created_at)}
+                      </span>
+                    )}
+                    {message.role === 'assistant' && message.processing_time_ms && (
+                      <>
+                        <span className="text-xs opacity-40">•</span>
+                        <span className="text-xs opacity-60" title="Processing time">
+                          ⚡ {formatProcessingTime(message.processing_time_ms)}
+                        </span>
+                      </>
+                    )}
+                    {message.role === 'assistant' && message.model_version && (
+                      <>
+                        <span className="text-xs opacity-40">•</span>
+                        <span className="text-xs opacity-60" title="AI Model">
+                          🤖 {message.model_version.includes('claude') ? 'Claude' : message.model_version}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  
                   {message.sources && message.sources.length > 0 && (
                     <div className="mt-4 pt-4 border-t" style={{ borderColor: theme.colors.border }}>
                       <button
@@ -399,6 +562,8 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
             <DocumentUpload theme={theme} onClose={() => setShowUpload(false)} />
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

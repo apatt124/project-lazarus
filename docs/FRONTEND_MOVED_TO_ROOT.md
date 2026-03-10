@@ -78,7 +78,7 @@ Merged frontend and root .gitignore files, updated paths to reflect new structur
 ### Environment Variables (Unchanged)
 - `LAZARUS_AWS_REGION=us-east-1`
 - `LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search`
-- `LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326`
+- `LAZARUS_S3_BUCKET=your-s3-bucket-name`
 
 ## Local Development
 

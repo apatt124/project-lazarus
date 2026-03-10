@@ -128,6 +128,73 @@ create_endpoint() {
 # Create endpoints
 create_endpoint "chat" "lazarus-api-chat" "POST"
 create_endpoint "login" "lazarus-api-auth" "POST"
+create_endpoint "upload" "lazarus-api-upload" "POST"
+create_endpoint "analyze" "lazarus-api-analyze" "POST"
+
+# Create conversations endpoint with sub-resources
+echo ""
+echo "Creating conversations endpoints..."
+CONVERSATIONS_RESOURCE_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $ROOT_ID \
+  --path-part "conversations" \
+  --region $REGION \
+  --query 'id' \
+  --output text 2>/dev/null || \
+  aws apigateway get-resources \
+    --rest-api-id $API_ID \
+    --region $REGION \
+    --query "items[?pathPart=='conversations'].id" \
+    --output text)
+
+echo "Conversations Resource ID: $CONVERSATIONS_RESOURCE_ID"
+
+# GET /conversations - List all
+aws apigateway put-method \
+  --rest-api-id $API_ID \
+  --resource-id $CONVERSATIONS_RESOURCE_ID \
+  --http-method GET \
+  --authorization-type NONE \
+  --region $REGION \
+  --no-api-key-required 2>/dev/null || true
+
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $CONVERSATIONS_RESOURCE_ID \
+  --http-method GET \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri "arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:$ACCOUNT_ID:function:lazarus-api-conversations/invocations" \
+  --region $REGION 2>/dev/null || true
+
+# POST /conversations - Create new
+aws apigateway put-method \
+  --rest-api-id $API_ID \
+  --resource-id $CONVERSATIONS_RESOURCE_ID \
+  --http-method POST \
+  --authorization-type NONE \
+  --region $REGION \
+  --no-api-key-required 2>/dev/null || true
+
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $CONVERSATIONS_RESOURCE_ID \
+  --http-method POST \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri "arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/arn:aws:lambda:$REGION:$ACCOUNT_ID:function:lazarus-api-conversations/invocations" \
+  --region $REGION 2>/dev/null || true
+
+# Add Lambda permission for conversations
+aws lambda add-permission \
+  --function-name lazarus-api-conversations \
+  --statement-id "apigateway-conversations" \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$API_ID/*/*/conversations*" \
+  --region $REGION 2>/dev/null || true
+
+echo "✅ Conversations endpoints created"
 
 # Deploy API
 echo ""
@@ -147,6 +214,10 @@ echo ""
 echo "🔗 Endpoints:"
 echo "  POST https://$API_ID.execute-api.$REGION.amazonaws.com/prod/chat"
 echo "  POST https://$API_ID.execute-api.$REGION.amazonaws.com/prod/login"
+echo "  POST https://$API_ID.execute-api.$REGION.amazonaws.com/prod/upload"
+echo "  POST https://$API_ID.execute-api.$REGION.amazonaws.com/prod/analyze"
+echo "  GET  https://$API_ID.execute-api.$REGION.amazonaws.com/prod/conversations"
+echo "  POST https://$API_ID.execute-api.$REGION.amazonaws.com/prod/conversations"
 echo ""
 echo "📝 Next Steps:"
 echo "1. Update .env.local:"

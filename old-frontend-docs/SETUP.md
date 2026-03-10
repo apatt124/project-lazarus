@@ -14,7 +14,7 @@ Before you begin, make sure you have:
 
 3. **AWS Infrastructure deployed**
    - Lambda function: `lazarus-vector-search`
-   - S3 bucket: `project-lazarus-medical-docs-677625843326`
+   - S3 bucket: `your-s3-bucket-name`
    - RDS database initialized
 
 ## Installation
@@ -46,7 +46,7 @@ Edit `.env.local` if you need to override defaults:
 ```env
 LAZARUS_AWS_REGION=us-east-1
 LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
-LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_S3_BUCKET=your-s3-bucket-name
 ```
 
 ### Step 3: Start Development Server

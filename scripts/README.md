@@ -327,7 +327,7 @@ DB_PASS=$(aws secretsmanager get-secret-value \
 
 # Connect to database
 PGPASSWORD="$DB_PASS" psql \
-  -h lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com \
+  -h your-rds-endpoint.region.rds.amazonaws.com \
   -U lazarus_admin \
   -d postgres
 
@@ -366,8 +366,8 @@ To add a new script:
 Scripts use these AWS resources:
 - **Region:** us-east-1
 - **Lambda:** lazarus-vector-search
-- **RDS:** lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com
-- **S3:** project-lazarus-medical-docs-677625843326
+- **RDS:** your-rds-endpoint.region.rds.amazonaws.com
+- **S3:** your-s3-bucket-name
 - **Secret:** lazarus/db-password
 
 To change defaults, edit the scripts or set environment variables:

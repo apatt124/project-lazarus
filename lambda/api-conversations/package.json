@@ -1,0 +1,9 @@
+{
+  "name": "api-conversations",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "pg": "^8.13.1",
+    "@aws-sdk/client-secrets-manager": "^3.709.0"
+  }
+}

@@ -9,14 +9,14 @@ Successfully deployed Lambda functions and API Gateway for Project Lazarus.
 ### Lambda Functions
 
 1. **lazarus-api-chat**
-   - Function ARN: `arn:aws:lambda:us-east-1:677625843326:function:lazarus-api-chat`
+   - Function ARN: `arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:lazarus-api-chat`
    - Runtime: Node.js 20.x
    - Memory: 1024 MB
    - Timeout: 60 seconds
    - Status: ✅ Deployed and tested
 
 2. **lazarus-api-auth**
-   - Function ARN: `arn:aws:lambda:us-east-1:677625843326:function:lazarus-api-auth`
+   - Function ARN: `arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:lazarus-api-auth`
    - Runtime: Node.js 20.x
    - Memory: 128 MB
    - Timeout: 10 seconds
@@ -24,8 +24,8 @@ Successfully deployed Lambda functions and API Gateway for Project Lazarus.
 
 ### API Gateway
 
-- **API ID**: `23jhaxp7dh`
-- **Base URL**: `https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod`
+- **API ID**: `your-api-id`
+- **Base URL**: `https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod`
 - **Endpoints**:
   - `POST /login` → lazarus-api-auth
   - `POST /chat` → lazarus-api-chat
@@ -45,16 +45,16 @@ Successfully deployed Lambda functions and API Gateway for Project Lazarus.
 
 ### Login Endpoint
 ```bash
-curl -X POST https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod/login \
+curl -X POST https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod/login \
   -H 'Content-Type: application/json' \
-  -d '{"password":"casperthefriendlyghost124"}'
+  -d '{"password":"your_password_here"}'
 ```
 
 **Response**: ✅ `{"success":true,"message":"Login successful"}`
 
 ### Chat Endpoint
 ```bash
-curl -X POST https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod/chat \
+curl -X POST https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod/chat \
   -H 'Content-Type: application/json' \
   -d '{"query":"Hello, what can you help me with?"}'
 ```
@@ -65,13 +65,13 @@ curl -X POST https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod/chat \
 
 ### Local Development (.env.local)
 ```
-VITE_API_URL=https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod
+VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod
 ```
 
 ### Amplify Environment Variables
 ```
-VITE_API_URL=https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod
-APP_PASSWORD=casperthefriendlyghost124
+VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod
+APP_PASSWORD=your_secure_password_here
 ```
 
 ## Next Steps
@@ -97,9 +97,9 @@ aws logs tail /aws/lambda/lazarus-api-auth --follow
 **Check Amplify build status:**
 ```bash
 aws amplify get-job \
-  --app-id dp2mw5m8eaj5o \
+  --app-id your-amplify-app-id \
   --branch-name develop \
-  --job-id 12 \
+  --job-id JOB_ID \
   --region us-east-1
 ```
 
@@ -114,7 +114,7 @@ aws amplify get-job \
 ```
 Browser (Vite App)
     ↓
-API Gateway (https://23jhaxp7dh.execute-api.us-east-1.amazonaws.com/prod)
+API Gateway (https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod)
     ↓
     ├─→ /login → lazarus-api-auth (Password validation)
     └─→ /chat → lazarus-api-chat (AI chat)

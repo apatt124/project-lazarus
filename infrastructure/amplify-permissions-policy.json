@@ -14,14 +14,14 @@
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:677625843326:secret:lazarus-db-credentials-*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:lazarus-db-credentials-*"
     },
     {
       "Effect": "Allow",
       "Action": [
         "lambda:InvokeFunction"
       ],
-      "Resource": "arn:aws:lambda:us-east-1:677625843326:function:lazarus-vector-search"
+      "Resource": "arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:lazarus-vector-search"
     },
     {
       "Effect": "Allow",
@@ -31,8 +31,8 @@
         "s3:ListBucket"
       ],
       "Resource": [
-        "arn:aws:s3:::project-lazarus-medical-docs-677625843326",
-        "arn:aws:s3:::project-lazarus-medical-docs-677625843326/*"
+        "arn:aws:s3:::your-s3-bucket-name",
+        "arn:aws:s3:::your-s3-bucket-name/*"
       ]
     },
     {

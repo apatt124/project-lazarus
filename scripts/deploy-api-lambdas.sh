@@ -13,12 +13,15 @@ echo "Region: $REGION"
 echo "Account: $ACCOUNT_ID"
 echo ""
 
-# Get the app password from Amplify environment
-APP_PASSWORD=$(aws amplify get-app --app-id dp2mw5m8eaj5o --region $REGION --query 'app.environmentVariables.APP_PASSWORD' --output text 2>/dev/null || echo "")
+# Get the app password from environment or Amplify
+if [ -z "$APP_PASSWORD" ]; then
+  APP_PASSWORD=$(aws amplify get-app --app-id dp2mw5m8eaj5o --region $REGION --query 'app.environmentVariables.APP_PASSWORD' --output text 2>/dev/null || echo "")
+fi
 
 if [ -z "$APP_PASSWORD" ]; then
-  echo "⚠️  APP_PASSWORD not found in Amplify, using default"
-  APP_PASSWORD="casperthefriendlyghost124"
+  echo "❌ ERROR: APP_PASSWORD not set. Please set it as an environment variable or in Amplify."
+  echo "   Example: export APP_PASSWORD='your-secure-password'"
+  exit 1
 fi
 
 # Function to deploy a Lambda
@@ -172,6 +175,30 @@ deploy_lambda \
   10 \
   128
 
+deploy_lambda \
+  "lazarus-api-upload" \
+  "lambda/api-upload" \
+  "index.handler" \
+  "Document Upload API for Project Lazarus" \
+  300 \
+  2048
+
+deploy_lambda \
+  "lazarus-api-analyze" \
+  "lambda/api-analyze" \
+  "index.handler" \
+  "Document Analysis API for Project Lazarus" \
+  30 \
+  512
+
+deploy_lambda \
+  "lazarus-api-conversations" \
+  "lambda/api-conversations" \
+  "index.handler" \
+  "Conversations API for Project Lazarus" \
+  30 \
+  256
+
 echo "✅ All Lambda functions deployed!"
 echo ""
 echo "📋 Next Steps:"
@@ -182,3 +209,6 @@ echo ""
 echo "Function URLs:"
 echo "  Chat: lazarus-api-chat"
 echo "  Auth: lazarus-api-auth"
+echo "  Upload: lazarus-api-upload"
+echo "  Analyze: lazarus-api-analyze"
+echo "  Conversations: lazarus-api-conversations"
