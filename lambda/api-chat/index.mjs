@@ -141,6 +141,66 @@ function buildUserMessage(query, medicalDocs) {
   return message;
 }
 
+// Save message to conversation
+async function saveToConversation(conversationId, userMessage, assistantResponse, metadata) {
+  if (!conversationId || conversationId === 'temp') {
+    return; // Skip saving for temporary conversations
+  }
+  
+  try {
+    const pool = await getDbPool();
+    
+    // Save user message
+    await pool.query(`
+      INSERT INTO medical.messages (
+        conversation_id,
+        role,
+        content,
+        intent,
+        confidence_score,
+        sources,
+        model_version
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [
+      conversationId,
+      'user',
+      userMessage,
+      metadata.intent || 'general',
+      metadata.confidence || 0.5,
+      JSON.stringify(metadata.sources || []),
+      null
+    ]);
+    
+    // Save assistant message
+    await pool.query(`
+      INSERT INTO medical.messages (
+        conversation_id,
+        role,
+        content,
+        intent,
+        confidence_score,
+        sources,
+        model_version,
+        processing_time_ms
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      conversationId,
+      'assistant',
+      assistantResponse,
+      metadata.intent || 'general',
+      metadata.confidence || 0.5,
+      JSON.stringify(metadata.sources || []),
+      'claude-sonnet-4-20250514',
+      metadata.processing_time_ms || null
+    ]);
+    
+    // Conversation timestamp and message count are updated automatically by trigger
+  } catch (error) {
+    console.error('Failed to save to conversation:', error);
+    // Don't fail the request if saving fails
+  }
+}
+
 export const handler = async (event) => {
   const startTime = Date.now();
   
@@ -205,6 +265,14 @@ export const handler = async (event) => {
     };
 
     const processingTime = Date.now() - startTime;
+
+    // Save to conversation if conversation_id provided
+    await saveToConversation(conversation_id, query, aiResponse, {
+      intent: intentClassification.primary,
+      confidence: confidence.overall,
+      sources,
+      processing_time_ms: processingTime
+    });
 
     // Return response
     return {

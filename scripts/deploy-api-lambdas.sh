@@ -172,6 +172,30 @@ deploy_lambda \
   10 \
   128
 
+deploy_lambda \
+  "lazarus-api-upload" \
+  "lambda/api-upload" \
+  "index.handler" \
+  "Document Upload API for Project Lazarus" \
+  300 \
+  2048
+
+deploy_lambda \
+  "lazarus-api-analyze" \
+  "lambda/api-analyze" \
+  "index.handler" \
+  "Document Analysis API for Project Lazarus" \
+  30 \
+  512
+
+deploy_lambda \
+  "lazarus-api-conversations" \
+  "lambda/api-conversations" \
+  "index.handler" \
+  "Conversations API for Project Lazarus" \
+  30 \
+  256
+
 echo "✅ All Lambda functions deployed!"
 echo ""
 echo "📋 Next Steps:"
@@ -182,3 +206,6 @@ echo ""
 echo "Function URLs:"
 echo "  Chat: lazarus-api-chat"
 echo "  Auth: lazarus-api-auth"
+echo "  Upload: lazarus-api-upload"
+echo "  Analyze: lazarus-api-analyze"
+echo "  Conversations: lazarus-api-conversations"
