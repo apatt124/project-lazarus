@@ -171,26 +171,13 @@ export default function Sidebar({
               onClick={() => onConversationSelect(conversation.id)}
               className="flex-1 text-left min-w-0 overflow-hidden"
             >
-              <div className="flex items-center gap-2">
-                <p 
-                  className="text-sm flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" 
-                  style={{ color: theme.colors.text }}
-                  title={conversation.title}
-                >
-                  {conversation.title}
-                </p>
-                {conversation.message_count > 0 && (
-                  <span 
-                    className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" 
-                    style={{ 
-                      backgroundColor: theme.colors.background,
-                      color: theme.colors.textSecondary 
-                    }}
-                  >
-                    {conversation.message_count}
-                  </span>
-                )}
-              </div>
+              <p 
+                className="text-sm overflow-hidden text-ellipsis whitespace-nowrap" 
+                style={{ color: theme.colors.text }}
+                title={conversation.title}
+              >
+                {conversation.title}
+              </p>
               <p className="text-xs mt-1 truncate" style={{ color: theme.colors.textSecondary }}>
                 {formatDate(conversation.updated_at)}
               </p>
@@ -198,7 +185,7 @@ export default function Sidebar({
           )}
           
           {!isEditing && (
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-shrink-0 self-center">
               <button
                 onClick={() => setMenuOpenId(isMenuOpen ? null : conversation.id)}
                 className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-white/10 transition-opacity"

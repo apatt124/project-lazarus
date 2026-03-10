@@ -4,7 +4,12 @@ if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
 fi
 
-DB_HOST="${DB_HOST:-lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com}"
+# Load from environment or .env file
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+DB_HOST="${DB_HOST}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-lazarus_medical}"
 DB_USER="${DB_USER:-lazarus_admin}"

@@ -12,7 +12,7 @@ DB_PASSWORD=$(aws secretsmanager get-secret-value \
 
 echo "Database Connection Info:"
 echo "========================="
-echo "Endpoint: lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com"
+echo "Endpoint: ${DB_HOST}"
 echo "Database: postgres"
 echo "Username: lazarus_admin"
 echo "Password: $DB_PASSWORD"

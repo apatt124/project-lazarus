@@ -9,7 +9,7 @@ const textract = new TextractClient({ region: process.env.AWS_REGION || 'us-east
 const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'project-lazarus-medical-docs-677625843326';
+const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 // Extract text from document using Textract
 async function extractText(fileBuffer, contentType) {

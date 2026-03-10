@@ -11,15 +11,15 @@ if [ -f .env ]; then
 fi
 
 # Database connection details
-DB_HOST="${DB_HOST:-lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com}"
+DB_HOST="${DB_HOST}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-lazarus_medical}"
-DB_USER="${DB_USER:-lazarus_admin}"
+DB_USER="${DB_USER}"
 DB_PASSWORD="${DB_PASSWORD}"
 
-if [ -z "$DB_PASSWORD" ]; then
-    echo "Error: DB_PASSWORD not set"
-    echo "Run: source .env"
+if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+    echo "Error: DB_HOST, DB_USER, and DB_PASSWORD environment variables are required"
+    echo "Set them in .env file or export them before running this script"
     exit 1
 fi
 

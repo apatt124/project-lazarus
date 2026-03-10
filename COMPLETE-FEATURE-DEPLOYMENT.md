@@ -71,7 +71,7 @@ This will add new endpoints:
 Ensure the conversations and conversation_memory tables exist:
 
 ```bash
-psql -h lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com \
+psql -h your-rds-endpoint.region.rds.amazonaws.com \
   -U lazarus_admin \
   -d postgres \
   -f migrations/001_add_conversations_and_memory.sql
@@ -228,8 +228,8 @@ aws iam attach-role-policy \
 5. lazarus-api-conversations (new)
 
 ✅ **API Gateway Updated**:
-- API ID: `spgwp4ei7f`
-- Base URL: `https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod`
+- API ID: `your-api-id`
+- Base URL: `https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod`
 - All endpoints created and tested
 
 ✅ **IAM Permissions Added**:

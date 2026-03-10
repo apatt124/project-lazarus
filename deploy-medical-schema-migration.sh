@@ -81,9 +81,21 @@ echo ""
 echo "🧪 Step 3: Testing deployment..."
 echo ""
 
+# Load configuration from environment
+if [ -f .env.local ]; then
+  export $(grep -v '^#' .env.local | xargs)
+fi
+
+API_URL="${VITE_API_URL}"
+
+if [ -z "$API_URL" ]; then
+  echo "Error: VITE_API_URL not set in .env.local"
+  exit 1
+fi
+
 # Test conversations list
 echo "Testing GET /conversations..."
-CONV_RESPONSE=$(curl -s https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/conversations)
+CONV_RESPONSE=$(curl -s "$API_URL/conversations")
 CONV_COUNT=$(echo $CONV_RESPONSE | jq -r '.conversations | length')
 
 if [ "$CONV_COUNT" -gt 0 ]; then
@@ -97,7 +109,7 @@ echo ""
 # Test conversation creation
 echo "Testing POST /conversations..."
 CREATE_RESPONSE=$(curl -s -X POST \
-    https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/conversations \
+    "$API_URL/conversations" \
     -H 'Content-Type: application/json' \
     -d '{"title":"Test Migration Conversation"}')
 
@@ -110,7 +122,7 @@ if [ "$TEST_CONV_ID" != "null" ] && [ -n "$TEST_CONV_ID" ]; then
     echo ""
     echo "Testing POST /chat with conversation_id..."
     CHAT_RESPONSE=$(curl -s -X POST \
-        https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/chat \
+        "$API_URL/chat" \
         -H 'Content-Type: application/json' \
         -d "{\"query\":\"Hello, this is a test message\",\"conversation_id\":\"$TEST_CONV_ID\"}")
     
@@ -122,7 +134,7 @@ if [ "$TEST_CONV_ID" != "null" ] && [ -n "$TEST_CONV_ID" ]; then
         # Verify message was saved
         echo ""
         echo "Testing GET /conversations/:id..."
-        DETAIL_RESPONSE=$(curl -s https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/conversations/$TEST_CONV_ID)
+        DETAIL_RESPONSE=$(curl -s "$API_URL/conversations/$TEST_CONV_ID")
         MESSAGE_COUNT=$(echo $DETAIL_RESPONSE | jq -r '.conversation.messages | length')
         
         if [ "$MESSAGE_COUNT" -gt 0 ]; then

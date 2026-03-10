@@ -2,6 +2,18 @@
 
 # Test document upload end-to-end
 
+# Load API URL from environment
+if [ -f .env.local ]; then
+  export $(grep -v '^#' .env.local | xargs)
+fi
+
+API_URL="${VITE_API_URL}"
+
+if [ -z "$API_URL" ]; then
+  echo "Error: VITE_API_URL not set in .env.local"
+  exit 1
+fi
+
 echo "=========================================="
 echo "Testing Document Upload End-to-End"
 echo "=========================================="
@@ -20,7 +32,7 @@ BASE64_CONTENT=$(echo "$TEST_CONTENT" | base64)
 
 echo "1. Uploading test document..."
 UPLOAD_RESPONSE=$(curl -s -X POST \
-  https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/upload \
+  "$API_URL/upload" \
   -H 'Content-Type: application/json' \
   -d "{
     \"fileName\": \"test-vitals-$(date +%s).txt\",
@@ -47,7 +59,7 @@ if [ "$DOCUMENT_ID" != "null" ] && [ -n "$DOCUMENT_ID" ]; then
     echo ""
     echo "3. Testing chat with query about blood pressure..."
     CHAT_RESPONSE=$(curl -s -X POST \
-      https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/chat \
+      "$API_URL/chat" \
       -H 'Content-Type: application/json' \
       -d '{"query":"What was my blood pressure in the most recent test?"}')
     

@@ -1,11 +1,19 @@
 #!/bin/bash
 # Quick database queries
 
-# Get DB password
-DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id lazarus/db-password --query SecretString --output text)
-DB_HOST="lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com"
-DB_USER="lazarus_admin"
-DB_NAME="postgres"
+# Get DB credentials from environment or Secrets Manager
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+DB_HOST="${DB_HOST}"
+DB_USER="${DB_USER:-lazarus_admin}"
+DB_NAME="${DB_NAME:-postgres}"
+
+# Get password from Secrets Manager if not in environment
+if [ -z "$DB_PASSWORD" ]; then
+  DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id lazarus/db-password --query SecretString --output text)
+fi
 
 case "$1" in
   "list")

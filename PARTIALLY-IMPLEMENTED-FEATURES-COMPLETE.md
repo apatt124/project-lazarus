@@ -71,7 +71,7 @@ DELETE /conversations/{id}  - Delete conversation
 ### Testing
 ```bash
 # Test conversation detail
-curl https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/conversations/{id}
+curl https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod/conversations/{id}
 
 # Response includes:
 # - Conversation metadata (id, title, timestamps)
@@ -111,7 +111,7 @@ curl https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/conversations/{
 ### Testing
 ```bash
 # Upload test document
-curl -X POST https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/upload \
+curl -X POST https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod/upload \
   -H 'Content-Type: application/json' \
   -d '{
     "fileName": "test.txt",
@@ -130,7 +130,7 @@ curl -X POST https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/upload 
   "document": {
     "documentId": "681753e3-a94a-4348-beea-c5cc4b5fd47b",
     "filename": "test-vitals-2.txt",
-    "s3Uri": "s3://project-lazarus-medical-docs-677625843326/documents/...",
+    "s3Uri": "s3://your-s3-bucket-name/documents/...",
     "textLength": 173,
     "metadata": {...}
   }

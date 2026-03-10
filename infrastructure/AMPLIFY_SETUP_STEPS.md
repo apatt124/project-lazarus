@@ -54,7 +54,7 @@ Key: LAZARUS_LAMBDA_FUNCTION
 Value: lazarus-vector-search
 
 Key: LAZARUS_S3_BUCKET
-Value: project-lazarus-medical-docs-677625843326
+Value: your-s3-bucket-name
 ```
 
 **Note**: You don't need to add AWS credentials because we're using the IAM service role!

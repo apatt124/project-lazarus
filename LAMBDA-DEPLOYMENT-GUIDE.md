@@ -82,7 +82,7 @@ aws amplify update-app \
 ```bash
 curl -X POST https://YOUR-API-ID.execute-api.us-east-1.amazonaws.com/prod/login \
   -H 'Content-Type: application/json' \
-  -d '{"password":"casperthefriendlyghost124"}'
+  -d '{"password":"your_app_password_here"}'
 ```
 
 **Test chat:**

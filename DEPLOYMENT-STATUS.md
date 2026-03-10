@@ -11,8 +11,8 @@ All 5 Lambda functions deployed and working:
 5. **lazarus-api-conversations** - Conversation management
 
 ### API Gateway
-- **API ID**: `spgwp4ei7f`
-- **Base URL**: `https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod`
+- **API ID**: `your-api-id`
+- **Base URL**: `https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod`
 - **Working Endpoints**:
   - ✅ POST /login - Authentication
   - ✅ POST /chat - AI chat (with and without conversation_id)
@@ -42,7 +42,7 @@ All 5 Lambda functions deployed and working:
 ### Upload Endpoint
 The upload endpoint responds but multipart form data handling needs testing:
 ```bash
-curl -X POST https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod/upload \
+curl -X POST https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod/upload \
   -F "file=@document.pdf" \
   -F 'metadata={"documentType":"lab_results"}'
 ```
@@ -65,8 +65,8 @@ The `/conversations/{id}` route doesn't exist in API Gateway. Options:
 ### 1. Update Amplify Environment Variables
 ```bash
 aws amplify update-app \
-  --app-id dp2mw5m8eaj5o \
-  --environment-variables VITE_API_URL=https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod
+  --app-id your-amplify-app-id \
+  --environment-variables VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod
 ```
 
 ### 2. Test Upload Endpoint

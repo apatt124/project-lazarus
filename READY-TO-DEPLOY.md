@@ -16,7 +16,7 @@ All core backend infrastructure is deployed and tested. The application is ready
 
 ### API Endpoints (All Tested ✅)
 
-**Base URL**: `https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod`
+**Base URL**: `https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod`
 
 | Endpoint | Method | Status | Purpose |
 |----------|--------|--------|---------|
@@ -35,15 +35,15 @@ conversation_memory (id, conversation_id, user_message, assistant_response, inte
 
 ### Environment Configuration
 
-**Amplify Environment Variables** (Updated ✅):
+**Amplify Environment Variables** (Set in Amplify Console):
 ```
-VITE_API_URL=https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod
-APP_PASSWORD=casperthefriendlyghost124
+VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod
+APP_PASSWORD=your_secure_password_here
 ```
 
 **Local Development** (`.env.local`):
 ```
-VITE_API_URL=https://spgwp4ei7f.execute-api.us-east-1.amazonaws.com/prod
+VITE_API_URL=https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/prod
 ```
 
 ## 🎯 Core Features Working
@@ -141,6 +141,6 @@ The backend is ready and waiting! 🚀
 ---
 
 **Deployment Date**: March 9, 2026  
-**API Gateway ID**: spgwp4ei7f  
+**API Gateway ID**: your-api-id  
 **Status**: Production Ready ✅
 

@@ -34,7 +34,7 @@ In the Amplify Console:
 ```
 LAZARUS_AWS_REGION=us-east-1
 LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
-LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_S3_BUCKET=your-s3-bucket-name
 ```
 
 For AWS credentials, you have two options:
@@ -75,14 +75,14 @@ If using Option A, create this custom policy and attach to the Amplify service r
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:677625843326:secret:lazarus-db-credentials-*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:lazarus-db-credentials-*"
     },
     {
       "Effect": "Allow",
       "Action": [
         "lambda:InvokeFunction"
       ],
-      "Resource": "arn:aws:lambda:us-east-1:677625843326:function:lazarus-vector-search"
+      "Resource": "arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:lazarus-vector-search"
     },
     {
       "Effect": "Allow",
@@ -90,7 +90,7 @@ If using Option A, create this custom policy and attach to the Amplify service r
         "s3:PutObject",
         "s3:GetObject"
       ],
-      "Resource": "arn:aws:s3:::project-lazarus-medical-docs-677625843326/*"
+      "Resource": "arn:aws:s3:::your-s3-bucket-name/*"
     },
     {
       "Effect": "Allow",
@@ -188,7 +188,7 @@ npm install
 cat > .env.local << EOF
 LAZARUS_AWS_REGION=us-east-1
 LAZARUS_LAMBDA_FUNCTION=lazarus-vector-search
-LAZARUS_S3_BUCKET=project-lazarus-medical-docs-677625843326
+LAZARUS_S3_BUCKET=your-s3-bucket-name
 AWS_ACCESS_KEY_ID=your_key
 AWS_SECRET_ACCESS_KEY=your_secret
 EOF

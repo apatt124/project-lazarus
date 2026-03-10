@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Theme } from '../lib/themes';
 import DocumentUpload from './DocumentUpload';
+import UserFactsPanel from './UserFactsPanel';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -19,6 +20,9 @@ interface Message {
     tier3: number;
     tier4Plus: number;
   };
+  created_at?: string;
+  processing_time_ms?: number;
+  model_version?: string;
 }
 
 interface ChatInterfaceProps {
@@ -40,6 +44,7 @@ export default function ChatInterface({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const [conversationId, setConversationId] = useState<string | undefined>(externalConversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -58,6 +63,31 @@ export default function ChatInterface({
       }
       return newSet;
     });
+  };
+
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return '';
+    
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffSecs < 10) return 'Just now';
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatProcessingTime = (ms?: number) => {
+    if (!ms) return '';
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
   };
 
   useEffect(() => {
@@ -89,6 +119,9 @@ export default function ChatInterface({
             overall: msg.confidence_score,
             reasoning: msg.confidence_reasoning || ''
           } : undefined,
+          created_at: msg.created_at,
+          processing_time_ms: msg.processing_time_ms,
+          model_version: msg.model_version,
         }));
         
         setMessages(loadedMessages);
@@ -109,7 +142,11 @@ export default function ChatInterface({
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage: Message = { role: 'user', content: input };
+    const userMessage: Message = { 
+      role: 'user', 
+      content: input,
+      created_at: new Date().toISOString()
+    };
     setMessages((prev) => [...prev, userMessage]);
     
     const userQuery = input;
@@ -128,10 +165,10 @@ export default function ChatInterface({
           }),
         });
         const convData = await convResponse.json();
-        if (convData.success) {
+        if (convData.success && convData.conversation?.id) {
           currentConvId = convData.conversation.id;
-          setConversationId(currentConvId);
-          onConversationChange(currentConvId, convData.conversation.title);
+          setConversationId(convData.conversation.id);
+          onConversationChange(convData.conversation.id, convData.conversation.title);
         }
       } catch (error) {
         console.error('Failed to create conversation:', error);
@@ -159,8 +196,18 @@ export default function ChatInterface({
           intent: data.intent,
           confidence: data.confidence,
           source_quality: data.source_quality,
+          created_at: new Date().toISOString(),
+          processing_time_ms: data.processing_time_ms,
+          model_version: data.model_version,
         };
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Trigger memory processing in background (don't await)
+        if (currentConvId) {
+          fetch(`${import.meta.env.VITE_API_URL}/memory/process/${currentConvId}`, {
+            method: 'POST',
+          }).catch(err => console.error('Memory processing failed:', err));
+        }
       } else {
         throw new Error(data.error || 'Failed to get response');
       }
@@ -168,6 +215,7 @@ export default function ChatInterface({
       const errorMessage: Message = {
         role: 'assistant',
         content: `Sorry, I encountered an error: ${error}`,
+        created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -187,8 +235,13 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
+      {showProfile ? (
+        /* Profile View - Full Width */
+        <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
+      ) : (
+        <>
+          {/* Header */}
+          <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
@@ -209,6 +262,16 @@ export default function ChatInterface({
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowProfile(!showProfile)}
+            className="p-2 rounded-lg transition-all hover:bg-white/10"
+            style={{ color: showProfile ? theme.colors.primary : theme.colors.textSecondary }}
+            title="View your medical profile"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </button>
           {showNewChatButton && (
             <button
               onClick={handleNewChat}
@@ -356,6 +419,32 @@ export default function ChatInterface({
                   ) : (
                     <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
                   )}
+                  
+                  {/* Message Footer - Timestamp and Metadata */}
+                  <div className="flex items-center gap-2 mt-3 pt-2 border-t" style={{ borderColor: theme.colors.border + '40' }}>
+                    {message.created_at && (
+                      <span className="text-xs opacity-60">
+                        {formatTimestamp(message.created_at)}
+                      </span>
+                    )}
+                    {message.role === 'assistant' && message.processing_time_ms && (
+                      <>
+                        <span className="text-xs opacity-40">•</span>
+                        <span className="text-xs opacity-60" title="Processing time">
+                          ⚡ {formatProcessingTime(message.processing_time_ms)}
+                        </span>
+                      </>
+                    )}
+                    {message.role === 'assistant' && message.model_version && (
+                      <>
+                        <span className="text-xs opacity-40">•</span>
+                        <span className="text-xs opacity-60" title="AI Model">
+                          🤖 {message.model_version.includes('claude') ? 'Claude' : message.model_version}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  
                   {message.sources && message.sources.length > 0 && (
                     <div className="mt-4 pt-4 border-t" style={{ borderColor: theme.colors.border }}>
                       <button
@@ -473,6 +562,8 @@ export default function ChatInterface({
             <DocumentUpload theme={theme} onClose={() => setShowUpload(false)} />
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
