@@ -9,6 +9,7 @@ import ReactFlow, {
   useEdgesState,
   ConnectionMode,
   Panel,
+  Position,
   MiniMap,
   useReactFlow,
   ReactFlowProvider,
@@ -56,8 +57,7 @@ interface TimelineEvent {
   fact_id: string;
 }
 
-const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
-  const { setCenter } = useReactFlow();
+const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ userId }) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -71,9 +71,6 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Node[]>([]);
-  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
 
   const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -89,6 +86,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
     let targetHandle = 'target-left';
     
     if (absX > absY) {
+      // Horizontal connection is more direct
       if (dx > 0) {
         sourceHandle = 'source-right';
         targetHandle = 'target-left';
@@ -97,6 +95,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
         targetHandle = 'target-right';
       }
     } else {
+      // Vertical connection is more direct
       if (dy > 0) {
         sourceHandle = 'source-bottom';
         targetHandle = 'target-top';
@@ -128,6 +127,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       return edge;
     });
     
+    // Only update if handles actually changed
     const handlesChanged = updatedEdges.some((edge, i) => 
       edge.sourceHandle !== edges[i].sourceHandle || 
       edge.targetHandle !== edges[i].targetHandle
@@ -166,7 +166,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
     saveNodePositions(nodes);
   }, [saveNodePositions]);
 
-  // Fetch timeline events
+  // Fetch timeline events (only once on mount)
   useEffect(() => {
     const fetchTimelineEvents = async () => {
       try {
@@ -182,7 +182,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
     fetchTimelineEvents();
   }, [API_BASE]);
 
-  // Fetch graph data
+  // Fetch graph data (only once on mount)
   useEffect(() => {
     const fetchGraphData = async () => {
       setIsLoading(true);
@@ -190,7 +190,10 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
         const response = await fetch(`${API_BASE}/relationships/graph`);
         const data = await response.json();
 
+        console.log('Graph API response:', data);
+
         if (data.success) {
+          console.log('Relationships loaded:', data.relationships.length);
           setAllRelationships(data.relationships);
         }
       } catch (error) {
@@ -208,17 +211,15 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
 
     // Filter relationships
     let filteredRelationships = allRelationships.filter((rel) => {
+      // Filter by medical/general
       if (!filters.showMedical && rel.is_medical) return false;
       if (!filters.showGeneral && !rel.is_medical) return false;
-      if (parseFloat(rel.strength.toString()) < filters.minStrength) return false;
-      if (filters.relationshipTypes.length > 0 && !filters.relationshipTypes.includes(rel.relationship_type)) {
-        return false;
-      }
 
-      // Temporal filtering
-      const validFrom = new Date(rel.valid_from);
-      const validUntil = rel.valid_until ? new Date(rel.valid_until) : new Date();
-      if (currentTime < validFrom || currentTime > validUntil) {
+      // Filter by strength
+      if (parseFloat(rel.strength.toString()) < filters.minStrength) return false;
+
+      // Filter by relationship type (if any selected)
+      if (filters.relationshipTypes.length > 0 && !filters.relationshipTypes.includes(rel.relationship_type)) {
         return false;
       }
 
@@ -244,145 +245,44 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       }
     });
 
+    console.log('Building graph with', factMap.size, 'nodes and', filteredRelationships.length, 'edges');
+
+    // Load saved positions
     const savedPositions = loadNodePositions();
 
-    // Build adjacency map for hierarchical layout
-    const adjacencyMap = new Map<string, Set<string>>();
-    filteredRelationships.forEach((rel) => {
-      if (!adjacencyMap.has(rel.source_fact_id)) {
-        adjacencyMap.set(rel.source_fact_id, new Set());
-      }
-      adjacencyMap.get(rel.source_fact_id)!.add(rel.target_fact_id);
-    });
-
-    // Find nodes with most connections
+    // Create nodes with improved layout
     const nodeArray = Array.from(factMap.values());
-    const connectionCounts = new Map<string, number>();
-    nodeArray.forEach(node => {
-      const outgoing = adjacencyMap.get(node.id)?.size || 0;
-      const incoming = filteredRelationships.filter(r => r.target_fact_id === node.id).length;
-      connectionCounts.set(node.id, outgoing + incoming);
-    });
-
-    const sortedNodes = [...nodeArray].sort((a, b) => {
-      const countA = connectionCounts.get(a.id) || 0;
-      const countB = connectionCounts.get(b.id) || 0;
-      return countB - countA;
-    });
-
-    // Hierarchical layout
-    const graphNodes: Node[] = [];
-    const levelSpacing = 400;
-    const centerX = 500;
-    const centerY = 400;
-
-    const placed = new Set<string>();
-    const levels: string[][] = [];
-    
-    const hubCount = Math.min(3, sortedNodes.length);
-    levels[0] = sortedNodes.slice(0, hubCount).map(n => n.id);
-    levels[0].forEach(id => placed.add(id));
-
-    let currentLevel = 0;
-    while (placed.size < nodeArray.length && currentLevel < 10) {
-      const nextLevel: string[] = [];
-      const currentLevelNodes = levels[currentLevel] || [];
+    const graphNodes: Node[] = nodeArray.map((fact, index) => {
+      // Check if we have a saved position for this node
+      const savedPos = savedPositions[fact.id];
       
-      currentLevelNodes.forEach(nodeId => {
-        const connections = adjacencyMap.get(nodeId) || new Set();
-        connections.forEach(connectedId => {
-          if (!placed.has(connectedId)) {
-            nextLevel.push(connectedId);
-            placed.add(connectedId);
-          }
-        });
-        
-        filteredRelationships.forEach(rel => {
-          if (rel.target_fact_id === nodeId && !placed.has(rel.source_fact_id)) {
-            nextLevel.push(rel.source_fact_id);
-            placed.add(rel.source_fact_id);
-          }
-        });
-      });
-      
-      if (nextLevel.length > 0) {
-        levels[currentLevel + 1] = nextLevel;
+      let position;
+      if (savedPos) {
+        // Use saved position
+        position = { x: savedPos.x, y: savedPos.y };
+      } else {
+        // Use circular layout for new nodes
+        const totalNodes = nodeArray.length;
+        const angle = (index / totalNodes) * 2 * Math.PI;
+        const radius = Math.max(250, totalNodes * 40);
+        position = {
+          x: Math.cos(angle) * radius + 500,
+          y: Math.sin(angle) * radius + 400,
+        };
       }
-      currentLevel++;
-    }
-
-    const unplaced = nodeArray.filter(n => !placed.has(n.id));
-    if (unplaced.length > 0) {
-      levels.push(unplaced.map(n => n.id));
-    }
-
-    // Collision detection
-    const checkCollision = (x: number, y: number, existingNodes: Node[], minDistance: number = 280) => {
-      for (const node of existingNodes) {
-        const dx = node.position.x - x;
-        const dy = node.position.y - y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < minDistance) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // Position nodes
-    levels.forEach((levelNodes, levelIndex) => {
-      const radius = levelIndex * levelSpacing;
-      const angleStep = (2 * Math.PI) / Math.max(levelNodes.length, 1);
       
-      levelNodes.forEach((nodeId, indexInLevel) => {
-        const fact = factMap.get(nodeId);
-        if (!fact) return;
-        
-        let x, y;
-        const savedPos = savedPositions[nodeId];
-        
-        if (savedPos) {
-          x = savedPos.x;
-          y = savedPos.y;
-        } else {
-          let attempts = 0;
-          const maxAttempts = 50;
-          
-          do {
-            if (levelIndex === 0) {
-              if (levelNodes.length === 1) {
-                x = centerX;
-                y = centerY;
-              } else {
-                const angle = indexInLevel * angleStep + (attempts * 0.1);
-                const hubRadius = 200;
-                x = centerX + Math.cos(angle) * hubRadius;
-                y = centerY + Math.sin(angle) * hubRadius;
-              }
-            } else {
-              const angle = indexInLevel * angleStep + (attempts * 0.05);
-              const adjustedRadius = radius + (attempts * 20);
-              x = centerX + Math.cos(angle) * adjustedRadius;
-              y = centerY + Math.sin(angle) * adjustedRadius;
-            }
-            attempts++;
-          } while (checkCollision(x, y, graphNodes) && attempts < maxAttempts);
-        }
-        
-        graphNodes.push({
-          id: fact.id,
-          type: 'custom',
-          position: { x, y },
-          data: {
-            content: fact.content,
-            type: fact.type,
-            highlighted: highlightedNodes.has(fact.id),
-          },
-        });
-      });
+      return {
+        id: fact.id,
+        type: 'custom',
+        position,
+        data: {
+          content: fact.content,
+          type: fact.type,
+        },
+      };
     });
 
-    // Create edges
+    // Create edges with smart handle positioning
     const graphEdges: Edge[] = filteredRelationships.map((rel) => {
       const sourceNode = graphNodes.find(n => n.id === rel.source_fact_id);
       const targetNode = graphNodes.find(n => n.id === rel.target_fact_id);
@@ -415,86 +315,24 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
 
     setNodes(graphNodes);
     setEdges(graphEdges);
-  }, [allRelationships, filters, currentTime, highlightedNodes, setNodes, setEdges, calculateOptimalHandles, loadNodePositions]);
+  }, [allRelationships, filters, setNodes, setEdges, loadNodePositions, calculateOptimalHandles]);
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        selected: n.id === node.id,
-      }))
-    );
-  }, [setNodes]);
+  }, []);
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        selected: false,
-      }))
-    );
-  }, [setNodes]);
-
-  const handleNodeSelect = useCallback((nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (node) {
-      setSelectedNode(node);
-      setNodes((nds) =>
-        nds.map((n) => ({
-          ...n,
-          selected: n.id === nodeId,
-        }))
-      );
-      const x = node.position.x + (node.width || 220) / 2;
-      const y = node.position.y + (node.height || 56) / 2;
-      setCenter(x, y, { zoom: 1, duration: 800 });
-    }
-  }, [nodes, setCenter, setNodes]);
+  }, []);
 
   const handleTimeChange = useCallback((date: Date) => {
     setCurrentTime(date);
+    // TODO: Implement temporal filtering when needed
   }, []);
 
   const handleFilterChange = useCallback((newFilters: typeof filters) => {
     setFilters(newFilters);
   }, []);
-
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    
-    if (!query.trim()) {
-      setSearchResults([]);
-      setHighlightedNodes(new Set());
-      return;
-    }
-
-    const lowerQuery = query.toLowerCase();
-    const results = nodes.filter(node => 
-      node.data.content.toLowerCase().includes(lowerQuery) ||
-      node.data.type.toLowerCase().includes(lowerQuery)
-    );
-    
-    setSearchResults(results);
-    setHighlightedNodes(new Set(results.map(n => n.id)));
-  }, [nodes]);
-
-  const handleSearchResultClick = useCallback((nodeId: string) => {
-    const node = nodes.find(n => n.id === nodeId);
-    if (node) {
-      setSelectedNode(node);
-      setNodes((nds) =>
-        nds.map((n) => ({
-          ...n,
-          selected: n.id === nodeId,
-        }))
-      );
-      const x = node.position.x + (node.width || 220) / 2;
-      const y = node.position.y + (node.height || 56) / 2;
-      setCenter(x, y, { zoom: 1, duration: 800 });
-    }
-  }, [nodes, setCenter, setNodes]);
 
   return (
     <div className="h-full w-full relative bg-gray-900">
@@ -551,27 +389,24 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
           }}
         />
         
-        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 m-4" style={{ zIndex: 2147483648 }}>
-          <GraphControls 
-            filters={filters} 
-            onFilterChange={handleFilterChange}
-            currentTime={currentTime}
-            timelineEvents={timelineEvents}
-            onTimeChange={handleTimeChange}
-            searchQuery={searchQuery}
-            searchResults={searchResults.map(n => ({
-              id: n.id,
-              content: n.data.content,
-              type: n.data.type,
-            }))}
-            onSearch={handleSearch}
-            onSearchResultClick={handleSearchResultClick}
-          />
+        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 m-4 z-10">
+          <GraphControls filters={filters} onFilterChange={handleFilterChange} />
+        </Panel>
+
+        <Panel position="bottom-center" className="w-full max-w-4xl px-4 mb-4 pointer-events-none">
+          <div className="pointer-events-auto">
+            <TimelineSlider
+              currentTime={currentTime}
+              events={timelineEvents}
+              onTimeChange={handleTimeChange}
+            />
+          </div>
         </Panel>
       </ReactFlow>
 
       {selectedNode && createPortal(
         <>
+          {/* Backdrop */}
           <div 
             className="fixed inset-0 pointer-events-auto"
             style={{ 
@@ -580,6 +415,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
             }}
             onClick={() => setSelectedNode(null)}
           />
+          {/* Panel */}
           <div 
             style={{ 
               position: 'fixed',
@@ -593,9 +429,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
             <NodeDetailPanel
               node={selectedNode}
               edges={edges}
-              nodes={nodes}
               onClose={() => setSelectedNode(null)}
-              onNodeSelect={handleNodeSelect}
             />
           </div>
         </>,
@@ -611,14 +445,6 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
         </div>
       )}
     </div>
-  );
-};
-
-const KnowledgeGraph: React.FC<KnowledgeGraphProps> = (props) => {
-  return (
-    <ReactFlowProvider>
-      <KnowledgeGraphInner {...props} />
-    </ReactFlowProvider>
   );
 };
 
