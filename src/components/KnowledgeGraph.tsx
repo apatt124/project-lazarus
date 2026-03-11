@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import ReactFlow, {
   Node,
   Edge,
@@ -8,6 +9,8 @@ import ReactFlow, {
   useEdgesState,
   ConnectionMode,
   Panel,
+  Position,
+  MiniMap,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import CustomNode from './graph/CustomNode';
@@ -47,7 +50,7 @@ interface Relationship {
 }
 
 interface TimelineEvent {
-  date: string;
+  event_date: string;
   event_type: string;
   description: string;
   fact_id: string;
@@ -66,103 +69,252 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ userId }) => {
     minStrength: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL;
+  const API_BASE = import.meta.env.VITE_API_URL;
 
-  // Fetch timeline events
-  const fetchTimelineEvents = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/relationships/timeline`);
-      const data = await response.json();
-      if (data.success) {
-        setTimelineEvents(data.events);
+  // Function to calculate optimal handles based on node positions
+  const calculateOptimalHandles = useCallback((sourceNode: Node, targetNode: Node) => {
+    const dx = targetNode.position.x - sourceNode.position.x;
+    const dy = targetNode.position.y - sourceNode.position.y;
+    
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    
+    let sourceHandle = 'source-right';
+    let targetHandle = 'target-left';
+    
+    if (absX > absY) {
+      // Horizontal connection is more direct
+      if (dx > 0) {
+        sourceHandle = 'source-right';
+        targetHandle = 'target-left';
+      } else {
+        sourceHandle = 'source-left';
+        targetHandle = 'target-right';
       }
-    } catch (error) {
-      console.error('Failed to fetch timeline events:', error);
+    } else {
+      // Vertical connection is more direct
+      if (dy > 0) {
+        sourceHandle = 'source-bottom';
+        targetHandle = 'target-top';
+      } else {
+        sourceHandle = 'source-top';
+        targetHandle = 'target-bottom';
+      }
     }
+    
+    return { sourceHandle, targetHandle };
+  }, []);
+
+  // Update edge handles when nodes move
+  useEffect(() => {
+    if (nodes.length === 0 || edges.length === 0) return;
+    
+    const updatedEdges = edges.map(edge => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      const targetNode = nodes.find(n => n.id === edge.target);
+      
+      if (sourceNode && targetNode) {
+        const { sourceHandle, targetHandle } = calculateOptimalHandles(sourceNode, targetNode);
+        return {
+          ...edge,
+          sourceHandle,
+          targetHandle,
+        };
+      }
+      return edge;
+    });
+    
+    // Only update if handles actually changed
+    const handlesChanged = updatedEdges.some((edge, i) => 
+      edge.sourceHandle !== edges[i].sourceHandle || 
+      edge.targetHandle !== edges[i].targetHandle
+    );
+    
+    if (handlesChanged) {
+      setEdges(updatedEdges);
+    }
+  }, [nodes, edges, setEdges, calculateOptimalHandles]);
+
+  // Load saved node positions from localStorage
+  const loadNodePositions = useCallback(() => {
+    const saved = localStorage.getItem('knowledgeGraphPositions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error('Failed to parse saved positions:', error);
+        return {};
+      }
+    }
+    return {};
+  }, []);
+
+  // Save node positions to localStorage
+  const saveNodePositions = useCallback((nodes: Node[]) => {
+    const positions: Record<string, { x: number; y: number }> = {};
+    nodes.forEach(node => {
+      positions[node.id] = { x: node.position.x, y: node.position.y };
+    });
+    localStorage.setItem('knowledgeGraphPositions', JSON.stringify(positions));
+  }, []);
+
+  // Handle node drag end to save positions
+  const handleNodeDragStop = useCallback((_event: React.MouseEvent, _node: Node, nodes: Node[]) => {
+    saveNodePositions(nodes);
+  }, [saveNodePositions]);
+
+  // Fetch timeline events (only once on mount)
+  useEffect(() => {
+    const fetchTimelineEvents = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/relationships/timeline`);
+        const data = await response.json();
+        if (data.success) {
+          setTimelineEvents(data.events);
+        }
+      } catch (error) {
+        console.error('Failed to fetch timeline events:', error);
+      }
+    };
+    fetchTimelineEvents();
   }, [API_BASE]);
 
-  // Fetch graph data at specific time
-  const fetchGraphData = useCallback(async (timestamp?: Date) => {
-    setIsLoading(true);
-    try {
-      const url = timestamp
-        ? `${API_BASE}/relationships/graph?timestamp=${timestamp.toISOString()}`
-        : `${API_BASE}/relationships/graph`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.success) {
-        const relationships: Relationship[] = data.relationships;
-
-        // Build nodes from unique facts
-        const factMap = new Map<string, any>();
-        relationships.forEach((rel) => {
-          if (!factMap.has(rel.source_fact_id)) {
-            factMap.set(rel.source_fact_id, {
-              id: rel.source_fact_id,
-              content: rel.source_content,
-              type: rel.source_type,
-            });
-          }
-          if (!factMap.has(rel.target_fact_id)) {
-            factMap.set(rel.target_fact_id, {
-              id: rel.target_fact_id,
-              content: rel.target_content,
-              type: rel.target_type,
-            });
-          }
-        });
-
-        // Create nodes with auto-layout
-        const nodeArray = Array.from(factMap.values());
-        const graphNodes: Node[] = nodeArray.map((fact, index) => {
-          const angle = (index / nodeArray.length) * 2 * Math.PI;
-          const radius = 300;
-          return {
-            id: fact.id,
-            type: 'custom',
-            position: {
-              x: Math.cos(angle) * radius + 400,
-              y: Math.sin(angle) * radius + 300,
-            },
-            data: {
-              content: fact.content,
-              type: fact.type,
-            },
-          };
-        });
-
-        // Create edges
-        const graphEdges: Edge[] = relationships.map((rel) => ({
-          id: rel.id,
-          source: rel.source_fact_id,
-          target: rel.target_fact_id,
-          type: 'custom',
-          data: {
-            relationshipType: rel.relationship_type,
-            strength: rel.strength,
-            reasoning: rel.reasoning,
-            category: rel.category,
-            isMedical: rel.is_medical,
-          },
-        }));
-
-        setNodes(graphNodes);
-        setEdges(graphEdges);
-      }
-    } catch (error) {
-      console.error('Failed to fetch graph data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [API_BASE, setNodes, setEdges]);
-
+  // Fetch graph data (only once on mount)
   useEffect(() => {
+    const fetchGraphData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch(`${API_BASE}/relationships/graph`);
+        const data = await response.json();
+
+        console.log('Graph API response:', data);
+
+        if (data.success) {
+          console.log('Relationships loaded:', data.relationships.length);
+          setAllRelationships(data.relationships);
+        }
+      } catch (error) {
+        console.error('Failed to fetch graph data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
     fetchGraphData();
-    fetchTimelineEvents();
-  }, [fetchGraphData, fetchTimelineEvents]);
+  }, [API_BASE]);
+
+  // Apply filters and update graph
+  useEffect(() => {
+    if (allRelationships.length === 0) return;
+
+    // Filter relationships
+    let filteredRelationships = allRelationships.filter((rel) => {
+      // Filter by medical/general
+      if (!filters.showMedical && rel.is_medical) return false;
+      if (!filters.showGeneral && !rel.is_medical) return false;
+
+      // Filter by strength
+      if (parseFloat(rel.strength.toString()) < filters.minStrength) return false;
+
+      // Filter by relationship type (if any selected)
+      if (filters.relationshipTypes.length > 0 && !filters.relationshipTypes.includes(rel.relationship_type)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Build nodes from filtered relationships
+    const factMap = new Map<string, any>();
+    filteredRelationships.forEach((rel) => {
+      if (!factMap.has(rel.source_fact_id)) {
+        factMap.set(rel.source_fact_id, {
+          id: rel.source_fact_id,
+          content: rel.source_content,
+          type: rel.source_type,
+        });
+      }
+      if (!factMap.has(rel.target_fact_id)) {
+        factMap.set(rel.target_fact_id, {
+          id: rel.target_fact_id,
+          content: rel.target_content,
+          type: rel.target_type,
+        });
+      }
+    });
+
+    console.log('Building graph with', factMap.size, 'nodes and', filteredRelationships.length, 'edges');
+
+    // Load saved positions
+    const savedPositions = loadNodePositions();
+
+    // Create nodes with improved layout
+    const nodeArray = Array.from(factMap.values());
+    const graphNodes: Node[] = nodeArray.map((fact, index) => {
+      // Check if we have a saved position for this node
+      const savedPos = savedPositions[fact.id];
+      
+      let position;
+      if (savedPos) {
+        // Use saved position
+        position = { x: savedPos.x, y: savedPos.y };
+      } else {
+        // Use circular layout for new nodes
+        const totalNodes = nodeArray.length;
+        const angle = (index / totalNodes) * 2 * Math.PI;
+        const radius = Math.max(250, totalNodes * 40);
+        position = {
+          x: Math.cos(angle) * radius + 500,
+          y: Math.sin(angle) * radius + 400,
+        };
+      }
+      
+      return {
+        id: fact.id,
+        type: 'custom',
+        position,
+        data: {
+          content: fact.content,
+          type: fact.type,
+        },
+      };
+    });
+
+    // Create edges with smart handle positioning
+    const graphEdges: Edge[] = filteredRelationships.map((rel) => {
+      const sourceNode = graphNodes.find(n => n.id === rel.source_fact_id);
+      const targetNode = graphNodes.find(n => n.id === rel.target_fact_id);
+      
+      let sourceHandle = 'source-right';
+      let targetHandle = 'target-left';
+      
+      if (sourceNode && targetNode) {
+        const handles = calculateOptimalHandles(sourceNode, targetNode);
+        sourceHandle = handles.sourceHandle;
+        targetHandle = handles.targetHandle;
+      }
+      
+      return {
+        id: rel.id,
+        source: rel.source_fact_id,
+        target: rel.target_fact_id,
+        sourceHandle,
+        targetHandle,
+        type: 'custom',
+        data: {
+          relationshipType: rel.relationship_type,
+          strength: parseFloat(rel.strength.toString()),
+          reasoning: rel.reasoning,
+          category: rel.category,
+          isMedical: rel.is_medical,
+        },
+      };
+    });
+
+    setNodes(graphNodes);
+    setEdges(graphEdges);
+  }, [allRelationships, filters, setNodes, setEdges, loadNodePositions, calculateOptimalHandles]);
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
@@ -174,50 +326,113 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ userId }) => {
 
   const handleTimeChange = useCallback((date: Date) => {
     setCurrentTime(date);
-    fetchGraphData(date);
-  }, [fetchGraphData]);
+    // TODO: Implement temporal filtering when needed
+  }, []);
 
   const handleFilterChange = useCallback((newFilters: typeof filters) => {
     setFilters(newFilters);
   }, []);
 
   return (
-    <div className="h-full w-full relative">
+    <div className="h-full w-full relative bg-gray-900">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
         minZoom={0.1}
         maxZoom={2}
+        defaultEdgeOptions={{
+          animated: false,
+        }}
+        nodesDraggable={true}
+        nodesConnectable={false}
+        elementsSelectable={true}
+        selectNodesOnDrag={false}
+        panOnDrag={true}
+        panOnScroll={true}
+        zoomOnScroll={true}
+        zoomOnPinch={true}
+        zoomOnDoubleClick={false}
       >
-        <Background />
-        <Controls />
+        <Background color="#444" gap={16} size={1} />
+        <Controls showInteractive={false} />
+        <MiniMap 
+          nodeColor={(node) => {
+            const type = node.data.type;
+            const colors: Record<string, string> = {
+              medical_condition: '#ef4444',
+              symptom: '#f97316',
+              medication: '#3b82f6',
+              allergy: '#eab308',
+              procedure: '#a855f7',
+              test_result: '#22c55e',
+              lifestyle: '#14b8a6',
+              family_history: '#ec4899',
+              provider: '#6366f1',
+            };
+            return colors[type] || '#6b7280';
+          }}
+          maskColor="rgba(0, 0, 0, 0.6)"
+          style={{
+            backgroundColor: '#1f2937',
+            border: '1px solid #374151',
+          }}
+        />
         
-        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 m-4">
+        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 m-4 z-10">
           <GraphControls filters={filters} onFilterChange={handleFilterChange} />
         </Panel>
 
-        <Panel position="bottom-center" className="w-full max-w-4xl px-4">
-          <TimelineSlider
-            currentTime={currentTime}
-            events={timelineEvents}
-            onTimeChange={handleTimeChange}
-          />
+        <Panel position="bottom-center" className="w-full max-w-4xl px-4 mb-4 pointer-events-none">
+          <div className="pointer-events-auto">
+            <TimelineSlider
+              currentTime={currentTime}
+              events={timelineEvents}
+              onTimeChange={handleTimeChange}
+            />
+          </div>
         </Panel>
       </ReactFlow>
 
-      {selectedNode && (
-        <NodeDetailPanel
-          node={selectedNode}
-          onClose={() => setSelectedNode(null)}
-        />
+      {selectedNode && createPortal(
+        <>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 pointer-events-auto"
+            style={{ 
+              zIndex: 2147483647,
+              backgroundColor: 'transparent'
+            }}
+            onClick={() => setSelectedNode(null)}
+          />
+          {/* Panel */}
+          <div 
+            style={{ 
+              position: 'fixed',
+              top: '80px',
+              right: '16px',
+              maxHeight: 'calc(100vh - 200px)',
+              zIndex: 2147483647,
+              pointerEvents: 'auto',
+            }}
+          >
+            <NodeDetailPanel
+              node={selectedNode}
+              edges={edges}
+              onClose={() => setSelectedNode(null)}
+            />
+          </div>
+        </>,
+        document.body
       )}
 
       {isLoading && (

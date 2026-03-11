@@ -40,6 +40,7 @@ const CustomEdge: React.FC<EdgeProps> = ({
   sourcePosition,
   targetPosition,
   data,
+  selected,
 }) => {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -65,6 +66,9 @@ const CustomEdge: React.FC<EdgeProps> = ({
         strokeWidth={strokeWidth}
         fill="none"
         markerEnd="url(#arrowhead)"
+        style={{
+          opacity: selected ? 1 : 0.7,
+        }}
       />
       <EdgeLabelRenderer>
         <div
@@ -72,9 +76,36 @@ const CustomEdge: React.FC<EdgeProps> = ({
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: 'all',
+            backgroundColor: selected ? '#ffffff' : 'rgba(255, 255, 255, 0.95)',
+            color: color,
+            borderWidth: '2px',
+            borderStyle: 'solid',
+            borderColor: color,
+            fontSize: selected ? '11px' : '10px',
+            fontWeight: 600,
+            padding: selected ? '6px 10px' : '4px 8px',
+            borderRadius: '12px',
+            boxShadow: selected 
+              ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
+              : '0 2px 4px rgba(0,0,0,0.08)',
+            zIndex: selected ? 20 : 10,
+            transition: 'all 0.2s ease',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
           }}
-          className="bg-white px-2 py-1 rounded text-xs font-medium shadow-sm border"
           title={data?.reasoning}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1.05)`;
+            e.currentTarget.style.boxShadow = `0 6px 16px ${color}50, 0 3px 6px rgba(0,0,0,0.15)`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1)`;
+            e.currentTarget.style.boxShadow = selected 
+              ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
+              : '0 2px 4px rgba(0,0,0,0.08)';
+          }}
         >
           {label}
         </div>

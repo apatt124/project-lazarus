@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 interface TimelineEvent {
-  date: string;
+  event_date: string;
   event_type: string;
   description: string;
   fact_id: string;
@@ -35,11 +35,12 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
   // Calculate time range
   const now = new Date();
   const earliestEvent = events.length > 0
-    ? new Date(Math.min(...events.map(e => new Date(e.date).getTime())))
+    ? new Date(Math.min(...events.map(e => new Date(e.event_date).getTime())))
     : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); // 1 year ago default
 
   const timeRange = now.getTime() - earliestEvent.getTime();
 
+  // Auto-play animation
   useEffect(() => {
     if (isPlaying) {
       const interval = setInterval(() => {
@@ -55,10 +56,16 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
     }
   }, [isPlaying]);
 
+  // Update current time when slider changes (debounced)
   useEffect(() => {
     const timestamp = earliestEvent.getTime() + (sliderValue / 100) * timeRange;
-    onTimeChange(new Date(timestamp));
-  }, [sliderValue, earliestEvent, timeRange, onTimeChange]);
+    const newDate = new Date(timestamp);
+    
+    // Only call onTimeChange if date actually changed significantly (more than 1 day)
+    if (Math.abs(newDate.getTime() - currentTime.getTime()) > 24 * 60 * 60 * 1000) {
+      onTimeChange(newDate);
+    }
+  }, [sliderValue]); // Removed dependencies that cause loops
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSliderValue(Number(e.target.value));
@@ -104,14 +111,14 @@ const TimelineSlider: React.FC<TimelineSliderProps> = ({
           {/* Event markers */}
           <div className="relative h-6 mt-1">
             {events.map((event) => {
-              const eventTime = new Date(event.date).getTime();
+              const eventTime = new Date(event.event_date).getTime();
               const position = ((eventTime - earliestEvent.getTime()) / timeRange) * 100;
               return (
                 <div
                   key={event.fact_id}
                   className="absolute transform -translate-x-1/2 cursor-pointer"
                   style={{ left: `${position}%` }}
-                  title={`${event.description} (${formatDate(new Date(event.date))})`}
+                  title={`${event.description} (${formatDate(new Date(event.event_date))})`}
                 >
                   <span className="text-lg">{getEventIcon(event.event_type)}</span>
                 </div>
