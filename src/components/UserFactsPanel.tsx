@@ -34,7 +34,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   const [facts, setFacts] = useState<UserFact[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('facts');
+  const [viewMode, setViewMode] = useState<ViewMode>('graph');
   
   // Memory filters and search
   const [memorySearch, setMemorySearch] = useState('');
@@ -264,27 +264,25 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b flex-shrink-0" style={{ borderColor: theme.colors.border }}>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/10 transition-all"
-            style={{ color: theme.colors.textSecondary }}
-            title="Back to chat"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
-            Your Medical Profile
-          </h1>
-        </div>
-      </header>
-
       {/* Tabs */}
       <div className="flex gap-1 px-4 pt-4 flex-shrink-0" style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
+        <button
+          onClick={() => setViewMode('graph')}
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
+            viewMode === 'graph' ? '' : 'opacity-50 hover:opacity-75'
+          }`}
+          style={{
+            color: viewMode === 'graph' ? theme.colors.primary : theme.colors.textSecondary,
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <span>🕸️ Knowledge Graph</span>
+          </div>
+          {viewMode === 'graph' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: theme.colors.primary }} />
+          )}
+        </button>
+
         <button
           onClick={() => setViewMode('facts')}
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
@@ -327,23 +325,6 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
             </span>
           </div>
           {viewMode === 'memories' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: theme.colors.primary }} />
-          )}
-        </button>
-
-        <button
-          onClick={() => setViewMode('graph')}
-          className={`px-6 py-3 text-sm font-medium transition-all relative ${
-            viewMode === 'graph' ? '' : 'opacity-50 hover:opacity-75'
-          }`}
-          style={{
-            color: viewMode === 'graph' ? theme.colors.primary : theme.colors.textSecondary,
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <span>🕸️ Knowledge Graph</span>
-          </div>
-          {viewMode === 'graph' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: theme.colors.primary }} />
           )}
         </button>

@@ -1,0 +1,183 @@
+name: Deploy After Security Fixes
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+jobs:
+  security-check:
+    name: Security Pre-Deployment Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for exposed credentials
+        run: |
+          echo "🔍 Checking for exposed credentials..."
+          
+          # Check for hardcoded passwords
+          if grep -r "password.*=" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.mjs" . | grep -v "process.env" | grep -v "your_password" | grep -v "PASSWORD" | grep -v "// " | grep -v "node_modules"; then
+            echo "❌ Found hardcoded passwords in code!"
+            exit 1
+          fi
+          
+          # Check for .env files in git
+          if git ls-files | grep -E "^\.env$|^\.env\.local$"; then
+            echo "❌ .env files are tracked in git!"
+            exit 1
+          fi
+          
+          # Check for real AWS endpoints in code
+          if grep -r "lazarus-medical-db\.cslknf9zl44o" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.mjs" . | grep -v "node_modules"; then
+            echo "❌ Found hardcoded RDS endpoint in code!"
+            exit 1
+          fi
+          
+          # Check for real S3 buckets in code
+          if grep -r "project-lazarus-medical-docs-677625843326" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.mjs" . | grep -v "node_modules"; then
+            echo "❌ Found hardcoded S3 bucket in code!"
+            exit 1
+          fi
+          
+          echo "✅ No exposed credentials found in code"
+      
+      - name: Verify .gitignore
+        run: |
+          echo "🔍 Verifying .gitignore..."
+          
+          if ! grep -q "^\.env$" .gitignore; then
+            echo "❌ .env not in .gitignore!"
+            exit 1
+          fi
+          
+          if ! grep -q "^\.env\.local$" .gitignore; then
+            echo "❌ .env.local not in .gitignore!"
+            exit 1
+          fi
+          
+          if ! grep -q "NEW-CREDENTIALS\.txt" .gitignore; then
+            echo "❌ NEW-CREDENTIALS.txt not in .gitignore!"
+            exit 1
+          fi
+          
+          echo "✅ .gitignore properly configured"
+      
+      - name: Check environment variable usage
+        run: |
+          echo "🔍 Checking environment variable usage..."
+          
+          # Check database connections use env vars
+          if grep -r "process\.env\.DB_HOST" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.mjs" lib/ backend-lib/ app/ 2>/dev/null; then
+            echo "✅ Database connections use environment variables"
+          else
+            echo "⚠️  Warning: No DB_HOST environment variable usage found"
+          fi
+          
+          echo "✅ Environment variable check complete"
+
+  deploy-to-amplify:
+    name: Deploy to AWS Amplify
+    runs-on: ubuntu-latest
+    needs: security-check
+    if: success()
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Re-enable Amplify auto-build
+        run: |
+          echo "🔄 Re-enabling Amplify auto-build..."
+          aws amplify update-branch \
+            --app-id dp2mw5m8eaj5o \
+            --branch-name ${{ github.ref_name }} \
+            --enable-auto-build \
+            --region us-east-1
+          
+          echo "✅ Auto-build re-enabled"
+      
+      - name: Trigger Amplify deployment
+        run: |
+          echo "🚀 Triggering Amplify deployment..."
+          
+          JOB_ID=$(aws amplify start-job \
+            --app-id dp2mw5m8eaj5o \
+            --branch-name ${{ github.ref_name }} \
+            --job-type RELEASE \
+            --region us-east-1 \
+            --query 'jobSummary.jobId' \
+            --output text)
+          
+          echo "Deployment job started: $JOB_ID"
+          echo "job_id=$JOB_ID" >> $GITHUB_OUTPUT
+        id: deploy
+      
+      - name: Wait for deployment
+        run: |
+          echo "⏳ Waiting for deployment to complete..."
+          
+          JOB_ID="${{ steps.deploy.outputs.job_id }}"
+          
+          for i in {1..60}; do
+            STATUS=$(aws amplify get-job \
+              --app-id dp2mw5m8eaj5o \
+              --branch-name ${{ github.ref_name }} \
+              --job-id $JOB_ID \
+              --region us-east-1 \
+              --query 'job.summary.status' \
+              --output text)
+            
+            echo "Status: $STATUS"
+            
+            if [ "$STATUS" = "SUCCEED" ]; then
+              echo "✅ Deployment successful!"
+              exit 0
+            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then
+              echo "❌ Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            
+            sleep 30
+          done
+          
+          echo "⚠️  Deployment timeout after 30 minutes"
+          exit 1
+      
+      - name: Verify deployment
+        run: |
+          echo "🔍 Verifying deployment..."
+          
+          APP_URL="https://dp2mw5m8eaj5o.amplifyapp.com"
+          
+          # Wait a bit for DNS propagation
+          sleep 10
+          
+          # Check if app is accessible
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL" || echo "000")
+          
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+            echo "✅ App is accessible at $APP_URL"
+          else
+            echo "⚠️  App returned HTTP $HTTP_CODE"
+          fi
+      
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "📊 Deployment Summary"
+          echo "===================="
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "App URL: https://dp2mw5m8eaj5o.amplifyapp.com"
+          echo ""
+          echo "Security checks: ✅ Passed"
+          echo "Amplify deployment: ${{ job.status }}"

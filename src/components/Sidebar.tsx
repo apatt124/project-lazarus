@@ -13,6 +13,7 @@ interface Conversation {
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  onToggleCollapse: () => void;
   theme: Theme;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
@@ -25,8 +26,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ 
-  isOpen, 
-  onClose, 
+  isOpen,
+  onClose,
+  onToggleCollapse,
   theme, 
   currentTheme, 
   onThemeChange, 
@@ -260,8 +262,8 @@ export default function Sidebar({
 
       {/* Sidebar */}
       <div
-        className={`fixed lg:relative inset-y-0 left-0 z-50 w-72 flex flex-col transition-transform duration-300 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        className={`fixed inset-y-0 left-0 z-50 w-72 flex flex-col transition-transform duration-300 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{ backgroundColor: theme.colors.surface }}
       >
@@ -278,15 +280,18 @@ export default function Sidebar({
                 Project Lazarus
               </h2>
             </div>
-            <button
-              onClick={onClose}
-              className="lg:hidden p-2 rounded-lg hover:bg-white/10"
-              style={{ color: theme.colors.textSecondary }}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onToggleCollapse}
+                className="p-2 rounded-lg hover:bg-white/10"
+                style={{ color: theme.colors.textSecondary }}
+                title="Close sidebar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* New Chat Button */}

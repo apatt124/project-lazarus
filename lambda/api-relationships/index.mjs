@@ -391,11 +391,13 @@ Only include relationships you're confident about (strength >= 0.5).`;
 
 export const handler = async (event) => {
   try {
-    const path = event.path || event.rawPath || '';
+    // Handle both API Gateway REST API and direct invocation formats
+    const path = event.path || event.rawPath || event.resource || '';
     const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
     const pathParts = path.split('/').filter(Boolean);
+    const pathParams = event.pathParameters || {};
     
-    console.log('Relationships API:', method, path);
+    console.log('Relationships API:', method, path, 'PathParams:', pathParams);
     
     // GET /relationships - List all relationships
     if (method === 'GET' && pathParts.length === 1) {
@@ -457,8 +459,8 @@ export const handler = async (event) => {
     }
     
     // PATCH /relationships/:id - Update relationship
-    if (method === 'PATCH' && pathParts.length === 2) {
-      const relationshipId = pathParts[1];
+    if (method === 'PATCH' && (pathParts.length === 2 || pathParams.id)) {
+      const relationshipId = pathParams.id || pathParts[1];
       const body = JSON.parse(event.body || '{}');
       const relationship = await updateRelationship(relationshipId, body);
       
@@ -473,8 +475,8 @@ export const handler = async (event) => {
     }
     
     // DELETE /relationships/:id - Delete relationship
-    if (method === 'DELETE' && pathParts.length === 2) {
-      const relationshipId = pathParts[1];
+    if (method === 'DELETE' && (pathParts.length === 2 || pathParams.id)) {
+      const relationshipId = pathParams.id || pathParts[1];
       await deleteRelationship(relationshipId);
       
       return {
@@ -490,6 +492,7 @@ export const handler = async (event) => {
     // GET /relationships/graph - Get current knowledge graph
     if (method === 'GET' && pathParts.length === 2 && pathParts[1] === 'graph') {
       const timestamp = event.queryStringParameters?.timestamp;
+      const pool = await getDbPool();
       
       let relationships;
       if (timestamp) {

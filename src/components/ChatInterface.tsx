@@ -31,6 +31,7 @@ interface ChatInterfaceProps {
   conversationId?: string;
   onConversationChange: (conversationId: string, title: string) => void;
   onNewConversation: () => void;
+  sidebarCollapsed?: boolean;
 }
 
 export default function ChatInterface({ 
@@ -38,7 +39,7 @@ export default function ChatInterface({
   onMenuClick, 
   conversationId: externalConversationId,
   onConversationChange,
-  onNewConversation 
+  onNewConversation
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -235,30 +236,39 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full">
-      {showProfile ? (
-        /* Profile View - Full Width */
-        <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
-      ) : (
-        <>
-          {/* Header */}
-          <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
+      {/* Header - Always visible */}
+      <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
         <div className="flex items-center gap-3">
-          <button
-            onClick={onMenuClick}
-            className="lg:hidden p-2 rounded-lg hover:bg-white/10 transition-all"
-            style={{ color: theme.colors.text }}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
+          {showProfile ? (
+            <button
+              onClick={() => setShowProfile(false)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+              style={{ color: theme.colors.textSecondary }}
+              title="Back to chat"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={onMenuClick}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+              style={{ color: theme.colors.text }}
+              title="Toggle sidebar"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
           <img 
             src="/logo.svg" 
             alt="Project Lazarus" 
             className="w-8 h-8"
           />
           <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
-            Project Lazarus
+            {showProfile ? 'Your Medical Profile' : 'Project Lazarus'}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -272,7 +282,7 @@ export default function ChatInterface({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </button>
-          {showNewChatButton && (
+          {!showProfile && showNewChatButton && (
             <button
               onClick={handleNewChat}
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
@@ -287,8 +297,12 @@ export default function ChatInterface({
         </div>
       </header>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto">
+      {showProfile ? (
+        <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
+      ) : (
+        <>
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 py-12">
             <div className="max-w-2xl w-full space-y-8 animate-slide-in">

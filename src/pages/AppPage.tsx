@@ -15,7 +15,7 @@ interface Conversation {
 
 export default function AppPage() {
   const [currentTheme, setCurrentTheme] = useState(defaultTheme);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Closed by default
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
   const navigate = useNavigate();
@@ -56,7 +56,7 @@ export default function AppPage() {
 
   const handleConversationSelect = (conversationId: string) => {
     setCurrentConversationId(conversationId);
-    setSidebarOpen(false); // Close sidebar on mobile
+    // Don't close sidebar on desktop, only on mobile
   };
 
   const handleNewConversation = () => {
@@ -77,6 +77,7 @@ export default function AppPage() {
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onToggleCollapse={() => setSidebarOpen(!sidebarOpen)}
         theme={theme}
         currentTheme={currentTheme}
         onThemeChange={handleThemeChange}
