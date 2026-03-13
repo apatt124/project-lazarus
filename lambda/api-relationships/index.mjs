@@ -272,60 +272,134 @@ async function getTimelineEvents() {
   return result.rows;
 }
 
-// Extract relationships using AI
-async function extractRelationships() {
+// Extract relationships using AI (batch processing)
+async function extractRelationships(batchSize = 50, skipExisting = true) {
   const pool = await getDbPool();
   
-  // Get all active facts
-  const factsResult = await pool.query(`
-    SELECT id, fact_type, content, confidence, fact_date, metadata
-    FROM medical.user_facts
-    WHERE is_active = TRUE
-    ORDER BY fact_date DESC NULLS LAST
-  `);
+  // Get facts that need relationship analysis
+  let query = `
+    SELECT f.id, f.fact_type, f.content, f.confidence, f.fact_date, f.metadata, f.created_at
+    FROM medical.user_facts f
+    WHERE f.is_active = TRUE
+  `;
   
+  if (skipExisting) {
+    // Only get facts that don't have any relationships yet
+    query += `
+      AND NOT EXISTS (
+        SELECT 1 FROM medical.relationships r 
+        WHERE (r.source_fact_id = f.id OR r.target_fact_id = f.id)
+        AND r.is_active = TRUE
+      )
+    `;
+  }
+  
+  query += `
+    ORDER BY f.created_at DESC
+    LIMIT $1
+  `;
+  
+  const factsResult = await pool.query(query, [batchSize]);
   const facts = factsResult.rows;
   
   if (facts.length < 2) {
-    return { relationships_created: 0, message: 'Need at least 2 facts to create relationships' };
+    return { 
+      relationships_created: 0, 
+      facts_processed: facts.length,
+      message: 'Need at least 2 facts to create relationships' 
+    };
   }
   
-  // Prepare facts for AI
-  const factsText = facts.map((f, i) => 
-    `[${i}] ${f.fact_type}: ${f.content} (ID: ${f.id}, Date: ${f.fact_date || 'unknown'})`
+  console.log(`Processing ${facts.length} facts for relationship extraction`);
+  
+  // Also get existing facts that these new facts might relate to
+  const contextResult = await pool.query(`
+    SELECT id, fact_type, content, confidence, fact_date, metadata
+    FROM medical.user_facts
+    WHERE is_active = TRUE
+    AND id NOT IN (${facts.map((_, i) => `$${i + 1}`).join(',')})
+    ORDER BY created_at DESC
+    LIMIT 100
+  `, facts.map(f => f.id));
+  
+  const contextFacts = contextResult.rows;
+  const allFacts = [...facts, ...contextFacts];
+  
+  console.log(`Total facts for analysis: ${allFacts.length} (${facts.length} new + ${contextFacts.length} context)`);
+  
+  // Prepare facts for AI - create a lookup map
+  const factIdMap = new Map();
+  allFacts.forEach(f => factIdMap.set(f.id, f));
+  
+  const factsText = allFacts.map((f) => 
+    `UUID: ${f.id}
+Type: ${f.fact_type}
+Content: ${f.content}
+Date: ${f.fact_date || 'unknown'}
+---`
   ).join('\n');
   
-  const prompt = `Analyze these medical facts and identify relationships between them:
+  const prompt = `Analyze these medical facts and identify relationships between them.
 
+FACTS LIST:
 ${factsText}
 
-For each meaningful relationship, provide:
-1. Source fact ID (the UUID)
-2. Target fact ID (the UUID)
-3. Relationship type: treats, causes, contraindicates, related_to, monitors, requires, prescribed_by, managed_by
-4. Strength (0.0-1.0): How confident you are in this relationship
-5. Reasoning: Brief explanation
+CRITICAL INSTRUCTIONS:
+1. You MUST use the full UUID for source_fact_id and target_fact_id
+2. The UUID is the long string like "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+3. DO NOT use any other identifier - only the UUID shown above
+4. DO NOT use index numbers, content snippets, or anything else
 
-Focus on:
-- Medications treating conditions
-- Conditions causing symptoms
-- Allergies contraindicating medications
-- Providers managing conditions or prescribing medications
-- Related conditions or comorbidities
-- Medications that monitor conditions
+RELATIONSHIP TYPES:
+- treats: medication treats condition
+- causes: condition causes symptom
+- contraindicates: allergy contraindicates medication
+- related_to: general relationship
+- monitors: medication monitors condition
+- requires: condition requires medication
+- prescribed_by: medication prescribed by provider
+- managed_by: condition managed by provider
 
-Return as JSON array:
+CONFIDENCE SCALE (include relationships >= 0.3):
+- 0.9-1.0: Very confident (explicit, clear connection)
+- 0.7-0.9: Confident (strong evidence)
+- 0.5-0.7: Moderately confident (reasonable inference)
+- 0.3-0.5: Uncertain (possible connection)
+- 0.1-0.3: Speculative (weak evidence)
+
+RESPONSE FORMAT (JSON array only):
 [
   {
-    "source_fact_id": "uuid",
-    "target_fact_id": "uuid",
+    "source_fact_id": "full-uuid-here",
+    "target_fact_id": "full-uuid-here",
+    "relationship_type": "treats",
+    "strength": 0.95,
+    "reasoning": "Brief explanation"
+  }
+]
+
+EXAMPLE (using actual UUIDs from the list):
+If you see:
+UUID: 12345678-1234-1234-1234-123456789abc
+Type: medication
+Content: Metformin 500mg
+
+UUID: 87654321-4321-4321-4321-cba987654321
+Type: medical_condition
+Content: Type 2 Diabetes
+
+Then respond:
+[
+  {
+    "source_fact_id": "12345678-1234-1234-1234-123456789abc",
+    "target_fact_id": "87654321-4321-4321-4321-cba987654321",
     "relationship_type": "treats",
     "strength": 0.95,
     "reasoning": "Metformin is first-line treatment for Type 2 Diabetes"
   }
 ]
 
-Only include relationships you're confident about (strength >= 0.5).`;
+Now analyze the facts above and return relationships as JSON.`;
 
   const command = new ConverseCommand({
     modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
@@ -355,9 +429,37 @@ Only include relationships you're confident about (strength >= 0.5).`;
     return { relationships_created: 0, error: 'Failed to parse AI response' };
   }
   
-  // Insert relationships
+  // UUID validation regex
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  // Insert relationships with validation
   let created = 0;
+  let skipped = 0;
   for (const rel of relationships) {
+    // Validate UUIDs
+    if (!uuidRegex.test(rel.source_fact_id)) {
+      console.error(`Invalid source UUID: ${rel.source_fact_id}`);
+      skipped++;
+      continue;
+    }
+    if (!uuidRegex.test(rel.target_fact_id)) {
+      console.error(`Invalid target UUID: ${rel.target_fact_id}`);
+      skipped++;
+      continue;
+    }
+    
+    // Verify UUIDs exist in our fact list
+    if (!factIdMap.has(rel.source_fact_id)) {
+      console.error(`Source UUID not found in facts: ${rel.source_fact_id}`);
+      skipped++;
+      continue;
+    }
+    if (!factIdMap.has(rel.target_fact_id)) {
+      console.error(`Target UUID not found in facts: ${rel.target_fact_id}`);
+      skipped++;
+      continue;
+    }
+    
     try {
       await pool.query(`
         INSERT INTO medical.relationships (
@@ -379,13 +481,17 @@ Only include relationships you're confident about (strength >= 0.5).`;
       created++;
     } catch (error) {
       console.error('Failed to create relationship:', error);
+      skipped++;
     }
   }
   
   return { 
     relationships_created: created,
+    relationships_skipped: skipped,
     total_analyzed: relationships.length,
-    facts_processed: facts.length
+    facts_processed: allFacts.length,
+    new_facts: facts.length,
+    context_facts: contextFacts.length
   };
 }
 
@@ -511,12 +617,52 @@ function findConnectedComponents(nodes, adjacency) {
 }
 
 // Generate AI-optimized graph layout
-async function generateAILayout(graphData) {
+async function generateAILayout(graphData, userId = 'default', forceRegenerate = false) {
   const { nodes, edges } = graphData;
   
   console.log('=== AI LAYOUT REQUEST ===');
+  console.log('User ID:', userId);
   console.log('Number of nodes:', nodes.length);
   console.log('Number of edges:', edges.length);
+  console.log('Force regenerate:', forceRegenerate);
+  
+  // Check cache first (unless force regenerate)
+  if (!forceRegenerate) {
+    try {
+      const pool = await getDbPool();
+      const cacheResult = await pool.query(
+        'SELECT layout_data, node_count, edge_count, updated_at FROM medical.ai_layout_cache WHERE user_id = $1',
+        [userId]
+      );
+      
+      if (cacheResult.rows.length > 0) {
+        const cached = cacheResult.rows[0];
+        
+        // Validate cache is still valid (same node/edge count)
+        if (cached.node_count === nodes.length && cached.edge_count === edges.length) {
+          console.log('=== USING CACHED AI LAYOUT ===');
+          console.log('Cache age:', new Date().getTime() - new Date(cached.updated_at).getTime(), 'ms');
+          console.log('Cached positions:', Object.keys(cached.layout_data).length);
+          
+          return {
+            success: true,
+            positions: cached.layout_data,
+            cached: true,
+            cacheAge: cached.updated_at
+          };
+        } else {
+          console.log('=== CACHE INVALID ===');
+          console.log('Cached node count:', cached.node_count, 'Current:', nodes.length);
+          console.log('Cached edge count:', cached.edge_count, 'Current:', edges.length);
+        }
+      } else {
+        console.log('=== NO CACHE FOUND ===');
+      }
+    } catch (error) {
+      console.error('Error checking cache:', error);
+      // Continue to generate new layout
+    }
+  }
   
   // Build graph structure
   const { adjacency, nodeMap } = buildGraphStructure(nodes, edges);
@@ -728,9 +874,31 @@ Think step-by-step:
     console.log('Remaining overlaps:', overlapCount);
     console.log('Sample positions (after overlap fix):', JSON.stringify(Object.entries(fixedPositions).slice(0, 3), null, 2));
     
+    // Save to cache
+    try {
+      const pool = await getDbPool();
+      await pool.query(`
+        INSERT INTO medical.ai_layout_cache (user_id, node_count, edge_count, layout_data, updated_at)
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+          node_count = EXCLUDED.node_count,
+          edge_count = EXCLUDED.edge_count,
+          layout_data = EXCLUDED.layout_data,
+          updated_at = CURRENT_TIMESTAMP
+      `, [userId, nodes.length, edges.length, JSON.stringify(fixedPositions)]);
+      
+      console.log('=== SAVED TO CACHE ===');
+      console.log('User:', userId, 'Nodes:', nodes.length, 'Edges:', edges.length);
+    } catch (error) {
+      console.error('Error saving to cache:', error);
+      // Continue anyway - cache failure shouldn't break the response
+    }
+    
     return {
       success: true,
-      positions: fixedPositions
+      positions: fixedPositions,
+      cached: false
     };
   } catch (error) {
     console.error('=== AI LAYOUT ERROR ===');
@@ -747,6 +915,59 @@ Think step-by-step:
 
 export const handler = async (event) => {
   try {
+    // Handle async invocation for background AI layout generation
+    if (event.action === 'generate-ai-layout') {
+      console.log('=== ASYNC AI LAYOUT GENERATION ===');
+      console.log('User ID:', event.userId);
+      
+      try {
+        // Get all facts and relationships for this user
+        const pool = await getDbPool();
+        
+        const factsResult = await pool.query(`
+          SELECT id, fact_type, content
+          FROM medical.user_facts
+          WHERE is_active = TRUE
+          ORDER BY created_at DESC
+        `);
+        
+        const relationshipsResult = await pool.query(`
+          SELECT source_fact_id, target_fact_id, relationship_type, strength
+          FROM medical.relationships
+          WHERE is_active = TRUE
+        `);
+        
+        const graphData = {
+          nodes: factsResult.rows.map(f => ({
+            id: f.id,
+            content: f.content,
+            type: f.fact_type
+          })),
+          edges: relationshipsResult.rows.map(r => ({
+            source: r.source_fact_id,
+            target: r.target_fact_id,
+            relationshipType: r.relationship_type,
+            strength: r.strength
+          }))
+        };
+        
+        console.log(`Generating AI layout for ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
+        
+        const result = await generateAILayout(graphData, event.userId || 'default', true);
+        
+        if (result.success) {
+          console.log('AI layout generated and cached successfully');
+        } else {
+          console.error('AI layout generation failed:', result.error);
+        }
+        
+        return { success: true, message: 'AI layout generation completed' };
+      } catch (error) {
+        console.error('Error in async AI layout generation:', error);
+        return { success: false, error: error.message };
+      }
+    }
+    
     // Handle both API Gateway REST API and direct invocation formats
     const path = event.path || event.rawPath || event.resource || '';
     const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
@@ -802,7 +1023,11 @@ export const handler = async (event) => {
     
     // POST /relationships/extract - AI relationship extraction
     if (method === 'POST' && pathParts.length === 2 && pathParts[1] === 'extract') {
-      const result = await extractRelationships();
+      const body = JSON.parse(event.body || '{}');
+      const batchSize = body.batchSize || 50;
+      const skipExisting = body.skipExisting !== false; // default true
+      
+      const result = await extractRelationships(batchSize, skipExisting);
       
       return {
         statusCode: 200,
@@ -814,10 +1039,54 @@ export const handler = async (event) => {
       };
     }
     
+    // POST /relationships/extract-all - Process all facts in batches
+    if (method === 'POST' && pathParts.length === 2 && pathParts[1] === 'extract-all') {
+      const body = JSON.parse(event.body || '{}');
+      const batchSize = body.batchSize || 50;
+      const maxBatches = body.maxBatches || 10;
+      
+      const results = [];
+      let totalCreated = 0;
+      let totalProcessed = 0;
+      
+      for (let i = 0; i < maxBatches; i++) {
+        console.log(`Processing batch ${i + 1}/${maxBatches}`);
+        
+        const result = await extractRelationships(batchSize, true);
+        results.push(result);
+        
+        totalCreated += result.relationships_created;
+        totalProcessed += result.new_facts;
+        
+        // Stop if no more facts to process
+        if (result.new_facts === 0) {
+          console.log('No more facts to process');
+          break;
+        }
+      }
+      
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({ 
+          success: true,
+          batches_processed: results.length,
+          total_relationships_created: totalCreated,
+          total_facts_processed: totalProcessed,
+          results
+        })
+      };
+    }
+    
     // POST /relationships/ai-layout - Generate AI-optimized layout
     if (method === 'POST' && pathParts.length === 2 && pathParts[1] === 'ai-layout') {
       const body = JSON.parse(event.body || '{}');
-      const result = await generateAILayout(body);
+      const userId = body.userId || 'default';
+      const forceRegenerate = body.forceRegenerate || false;
+      const result = await generateAILayout(body, userId, forceRegenerate);
       
       return {
         statusCode: 200,
@@ -863,6 +1132,7 @@ export const handler = async (event) => {
     // GET /relationships/graph - Get current knowledge graph
     if (method === 'GET' && pathParts.length === 2 && pathParts[1] === 'graph') {
       const timestamp = event.queryStringParameters?.timestamp;
+      const minStrength = parseFloat(event.queryStringParameters?.minStrength || '0.5');
       const pool = await getDbPool();
       
       let relationships;
@@ -901,8 +1171,9 @@ export const handler = async (event) => {
           WHERE r.is_active = true
             AND sf.is_active = true
             AND tf.is_active = true
+            AND r.strength >= $1
           ORDER BY r.strength DESC
-        `);
+        `, [minStrength]);
         relationships = result.rows;
       }
       
@@ -912,7 +1183,11 @@ export const handler = async (event) => {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
         },
-        body: JSON.stringify({ success: true, relationships })
+        body: JSON.stringify({ 
+          success: true, 
+          relationships,
+          minStrength 
+        })
       };
     }
     

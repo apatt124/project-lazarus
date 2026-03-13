@@ -8,7 +8,6 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   ConnectionMode,
-  Panel,
   MiniMap,
   useReactFlow,
   ReactFlowProvider,
@@ -201,6 +200,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
     try {
       // Prepare graph data for AI
       const graphData = {
+        userId: userId, // Pass userId for server-side caching
         nodes: nodes.map(n => ({
           id: n.id,
           content: n.data.content,
@@ -212,9 +212,10 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           relationshipType: e.data?.relationshipType,
           strength: e.data?.strength,
         })),
+        forceRegenerate: true // Force regeneration, bypass cache
       };
       
-      console.log('Requesting new AI layout for', graphData.nodes.length, 'nodes');
+      console.log('Requesting new AI layout for', graphData.nodes.length, 'nodes (force regenerate)');
       
       const response = await fetch(`${API_BASE}/relationships/ai-layout`, {
         method: 'POST',
@@ -227,7 +228,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
       console.log('AI Layout regeneration response:', result.success);
       
       if (result.success && result.positions) {
-        // Save the new AI-generated positions to localStorage
+        // Save the new positions to localStorage
         const positions: Record<string, { x: number; y: number }> = {};
         Object.entries(result.positions).forEach(([nodeId, pos]: [string, any]) => {
           positions[nodeId] = { x: pos.x, y: pos.y };
@@ -248,7 +249,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           })
         );
         
-        console.log('AI layout regenerated and applied successfully');
+        console.log('AI layout regenerated and cached on server successfully');
       } else {
         console.error('AI layout regeneration failed:', result.error);
         alert(`Failed to regenerate AI layout: ${result.error || 'Unknown error'}`);
@@ -260,7 +261,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
     } finally {
       setIsGeneratingAILayout(false);
     }
-  }, [nodes, edges, API_BASE, setNodes]);
+  }, [nodes, edges, API_BASE, userId, setNodes]);
 
   // Handle layout change
   const handleLayoutChange = useCallback(async (layout: LayoutType) => {
@@ -268,86 +269,84 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
     
     // If switching to AI layout, check if we need to generate it
     if (layout === 'ai') {
-      const savedAIPositions = loadNodePositions('ai');
-      const hasSavedAILayout = Object.keys(savedAIPositions).length > 0;
-      
-      console.log('Has saved AI layout:', hasSavedAILayout);
-      
-      // Only generate if we don't have a saved AI layout
-      if (!hasSavedAILayout) {
-        setIsGeneratingAILayout(true);
-        try {
-          console.log('=== FRONTEND: Requesting AI Layout ===');
-          
-          // Prepare graph data for AI
-          const graphData = {
-            nodes: nodes.map(n => ({
-              id: n.id,
-              content: n.data.content,
-              type: n.data.type,
-            })),
-            edges: edges.map(e => ({
-              source: e.source,
-              target: e.target,
-              relationshipType: e.data?.relationshipType,
-              strength: e.data?.strength,
-            })),
-          };
-          
-          console.log('Graph data being sent:', {
-            nodeCount: graphData.nodes.length,
-            edgeCount: graphData.edges.length,
-            sampleNode: graphData.nodes[0],
-            sampleEdge: graphData.edges[0]
+      setIsGeneratingAILayout(true);
+      try {
+        console.log('=== FRONTEND: Requesting AI Layout ===');
+        
+        // Prepare graph data for AI
+        const graphData = {
+          userId: userId, // Pass userId for server-side caching
+          nodes: nodes.map(n => ({
+            id: n.id,
+            content: n.data.content,
+            type: n.data.type,
+          })),
+          edges: edges.map(e => ({
+            source: e.source,
+            target: e.target,
+            relationshipType: e.data?.relationshipType,
+            strength: e.data?.strength,
+          })),
+          forceRegenerate: false // Use cache if available
+        };
+        
+        console.log('Graph data being sent:', {
+          userId: graphData.userId,
+          nodeCount: graphData.nodes.length,
+          edgeCount: graphData.edges.length,
+          forceRegenerate: graphData.forceRegenerate
+        });
+        
+        const response = await fetch(`${API_BASE}/relationships/ai-layout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(graphData),
+        });
+        
+        const result = await response.json();
+        
+        console.log('=== FRONTEND: AI Layout Response ===');
+        console.log('Success:', result.success);
+        console.log('Cached:', result.cached);
+        console.log('Positions received:', result.positions ? Object.keys(result.positions).length : 0);
+        
+        if (result.success && result.positions) {
+          // Save to localStorage as backup
+          const positions: Record<string, { x: number; y: number }> = {};
+          Object.entries(result.positions).forEach(([nodeId, pos]: [string, any]) => {
+            positions[nodeId] = { x: pos.x, y: pos.y };
           });
-          
-          const response = await fetch(`${API_BASE}/relationships/ai-layout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(graphData),
-          });
-          
-          const result = await response.json();
-          
-          console.log('=== FRONTEND: AI Layout Response ===');
-          console.log('Success:', result.success);
-          console.log('Positions received:', result.positions ? Object.keys(result.positions).length : 0);
-          console.log('Sample positions:', result.positions ? Object.entries(result.positions).slice(0, 3) : []);
-          console.log('Full result:', result);
-          
-          if (result.success && result.positions) {
-            // Save the AI-generated positions to localStorage
-            const positions: Record<string, { x: number; y: number }> = {};
-            Object.entries(result.positions).forEach(([nodeId, pos]: [string, any]) => {
-              positions[nodeId] = { x: pos.x, y: pos.y };
-            });
-            localStorage.setItem('knowledgeGraphAILayout', JSON.stringify(positions));
-            console.log('Saved AI positions to localStorage');
-          } else {
-            console.error('AI layout generation failed:', result.error);
-            alert(`AI layout failed: ${result.error || 'Unknown error'}`);
-            setIsGeneratingAILayout(false);
-            return; // Don't change layout type if generation failed
-          }
-        } catch (error: unknown) {
-          console.error('=== FRONTEND: AI Layout Error ===');
-          console.error('Error:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          alert(`Failed to generate AI layout: ${errorMessage}`);
+          localStorage.setItem('knowledgeGraphAILayout', JSON.stringify(positions));
+          console.log(result.cached ? 'Loaded from server cache' : 'Generated new layout and cached on server');
+        } else {
+          console.error('AI layout generation failed:', result.error);
+          alert(`AI layout failed: ${result.error || 'Unknown error'}`);
           setIsGeneratingAILayout(false);
           return; // Don't change layout type if generation failed
-        } finally {
-          setIsGeneratingAILayout(false);
         }
-      } else {
-        console.log('Using saved AI layout from localStorage');
+      } catch (error: unknown) {
+        console.error('=== FRONTEND: AI Layout Error ===');
+        console.error('Error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        // Check if it's a timeout or network error
+        if (errorMessage.includes('Failed to fetch') || errorMessage.includes('timeout')) {
+          alert(`AI layout generation timed out. This can happen with large graphs (${nodes.length} nodes). Try using Custom layout instead, or wait a moment and try again - the layout may have been cached on the server.`);
+        } else {
+          alert(`Failed to generate AI layout: ${errorMessage}`);
+        }
+        
+        setIsGeneratingAILayout(false);
+        return; // Don't change layout type if generation failed
+      } finally {
+        setIsGeneratingAILayout(false);
       }
     }
     
     // Now change the layout type, which will trigger the useEffect to apply positions
     setLayoutType(layout);
     setHasUnsavedChanges(false);
-  }, [nodes, edges, API_BASE, loadNodePositions]);
+  }, [nodes, edges, API_BASE, userId]);
 
   // Fetch timeline events
   useEffect(() => {
@@ -370,7 +369,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
     const fetchGraphData = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/relationships/graph`);
+        const response = await fetch(`${API_BASE}/relationships/graph?minStrength=${filters.minStrength}`);
         const data = await response.json();
 
         if (data.success) {
@@ -383,7 +382,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
       }
     };
     fetchGraphData();
-  }, [API_BASE]);
+  }, [API_BASE, filters.minStrength]);
 
   // Apply filters and update graph
   useEffect(() => {
@@ -429,45 +428,10 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
 
     const savedPositions = loadNodePositions(layoutType);
 
-    // Build adjacency map and connection counts (used by multiple layouts)
-    const adjacencyMap = new Map<string, Set<string>>();
-    filteredRelationships.forEach((rel) => {
-      if (!adjacencyMap.has(rel.source_fact_id)) {
-        adjacencyMap.set(rel.source_fact_id, new Set());
-      }
-      adjacencyMap.get(rel.source_fact_id)!.add(rel.target_fact_id);
-    });
-
     const nodeArray = Array.from(factMap.values());
-    const connectionCounts = new Map<string, number>();
-    nodeArray.forEach(node => {
-      const outgoing = adjacencyMap.get(node.id)?.size || 0;
-      const incoming = filteredRelationships.filter(r => r.target_fact_id === node.id).length;
-      connectionCounts.set(node.id, outgoing + incoming);
-    });
-
-    const sortedNodes = [...nodeArray].sort((a, b) => {
-      const countA = connectionCounts.get(a.id) || 0;
-      const countB = connectionCounts.get(b.id) || 0;
-      return countB - countA;
-    });
-
     const graphNodes: Node[] = [];
     const centerX = 500;
     const centerY = 400;
-
-    // Collision detection helper
-    const checkCollision = (x: number, y: number, existingNodes: Node[], minDistance: number = 280) => {
-      for (const node of existingNodes) {
-        const dx = node.position.x - x;
-        const dy = node.position.y - y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < minDistance) {
-          return true;
-        }
-      }
-      return false;
-    };
 
     // Apply layout based on selected type
     if (layoutType === 'custom') {

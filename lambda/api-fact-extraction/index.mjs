@@ -1,10 +1,12 @@
 import pg from 'pg';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
 const { Pool } = pg;
 const secretsManager = new SecretsManagerClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us-east-1' });
+const lambda = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-1' });
 
 let dbPool = null;
 
@@ -175,6 +177,31 @@ async function storeFacts(facts, documentId, userId = null) {
   return storedFacts;
 }
 
+// Trigger async AI layout generation (fire and forget)
+async function triggerAILayoutGeneration(userId = 'default') {
+  try {
+    console.log('Triggering async AI layout generation for user:', userId);
+    
+    const payload = {
+      action: 'generate-ai-layout',
+      userId: userId,
+      forceRegenerate: true
+    };
+    
+    const command = new InvokeCommand({
+      FunctionName: 'lazarus-api-relationships',
+      InvocationType: 'Event', // Async invocation
+      Payload: JSON.stringify(payload)
+    });
+    
+    await lambda.send(command);
+    console.log('AI layout generation triggered successfully');
+  } catch (error) {
+    // Don't fail the main request if background job fails
+    console.error('Failed to trigger AI layout generation:', error);
+  }
+}
+
 // Extract facts from a single document
 async function extractFromDocument(documentId) {
   const pool = await getDbPool();
@@ -207,6 +234,9 @@ async function extractFromDocument(documentId) {
   
   // Store facts in database
   const storedFacts = await storeFacts(facts, documentId);
+  
+  // Trigger async AI layout generation in background
+  await triggerAILayoutGeneration('default');
   
   return {
     documentId,

@@ -214,6 +214,22 @@ SEARCH_RESOURCE_ID=$(aws apigateway create-resource \
 
 add_method $SEARCH_RESOURCE_ID "GET"
 
+# Create /relationships/ai-layout
+AI_LAYOUT_RESOURCE_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $RELATIONSHIPS_RESOURCE_ID \
+  --path-part "ai-layout" \
+  --region $REGION \
+  --query 'id' \
+  --output text 2>/dev/null || \
+  aws apigateway get-resources \
+    --rest-api-id $API_ID \
+    --region $REGION \
+    --query "items[?pathPart=='ai-layout' && parentId=='$RELATIONSHIPS_RESOURCE_ID'].id | [0]" \
+    --output text)
+
+add_method $AI_LAYOUT_RESOURCE_ID "POST"
+
 # Add Lambda permissions
 echo ""
 echo "5️⃣ Adding Lambda permissions..."
@@ -251,6 +267,7 @@ echo "  GET    $VITE_API_URL/relationships/{id}"
 echo "  PATCH  $VITE_API_URL/relationships/{id}"
 echo "  DELETE $VITE_API_URL/relationships/{id}"
 echo "  POST   $VITE_API_URL/relationships/extract"
+echo "  POST   $VITE_API_URL/relationships/ai-layout"
 echo "  GET    $VITE_API_URL/relationships/graph"
 echo "  GET    $VITE_API_URL/relationships/timeline"
 echo "  GET    $VITE_API_URL/relationships/search?q=keyword"
