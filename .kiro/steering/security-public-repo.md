@@ -48,6 +48,8 @@ git check-ignore .env .env.local
 
 ### 3. ALWAYS Use Environment Variables
 
+**NEVER ask the user for passwords** - all credentials are stored in AWS Secrets Manager or environment variables. The user does not know passwords and should never be prompted to enter them.
+
 **In Code**:
 ```javascript
 // ✅ CORRECT
@@ -58,6 +60,11 @@ const password = process.env.DB_PASSWORD;
 const dbHost = "lazarus-medical-db.cslknf9zl44o.us-east-1.rds.amazonaws.com";
 const password = "actual_password_here";
 ```
+
+**For Database Access**:
+- Use Lambda functions that retrieve credentials from AWS Secrets Manager
+- Use the API endpoints that are already configured (VITE_API_URL)
+- NEVER attempt direct database connections that require password input
 
 **In Shell Scripts**:
 ```bash

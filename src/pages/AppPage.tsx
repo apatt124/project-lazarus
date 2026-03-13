@@ -56,11 +56,12 @@ export default function AppPage() {
 
   const handleConversationSelect = (conversationId: string) => {
     setCurrentConversationId(conversationId);
-    // Don't close sidebar on desktop, only on mobile
+    setSidebarOpen(false); // Close sidebar when selecting a conversation
   };
 
   const handleNewConversation = () => {
     setCurrentConversationId(undefined);
+    setSidebarOpen(false); // Close sidebar when starting new chat
   };
 
   const handleConversationChange = (conversationId: string, title: string) => {
@@ -94,6 +95,7 @@ export default function AppPage() {
         <ChatInterface
           theme={theme}
           onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          onCloseSidebar={() => setSidebarOpen(false)}
           conversationId={currentConversationId}
           onConversationChange={handleConversationChange}
           onNewConversation={handleNewConversation}

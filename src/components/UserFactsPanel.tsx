@@ -425,7 +425,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">
         {viewMode === 'graph' ? (
-          <KnowledgeGraph userId="user-1" />
+          <KnowledgeGraph userId="user-1" theme={theme} />
         ) : (
           <div className="max-w-5xl mx-auto p-6">
             {loading ? (

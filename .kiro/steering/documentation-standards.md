@@ -19,22 +19,40 @@ When creating or updating documentation for this project, follow these standards
 project-lazarus/
 ├── README.md                    # Repository overview
 ├── QUICK_START.md              # 5-minute setup
-├── DEPLOYMENT-GUIDE.md         # Deployment instructions
 ├── START_HERE.md               # Entry point for new users
+├── DEPLOYMENT-GUIDE.md         # Main deployment instructions
+├── CONTRIBUTING.md             # Contribution guidelines
 ├── docs/                       # All documentation
 │   ├── README.md              # Documentation index
 │   ├── IMPLEMENTATION_SUMMARY.md
-│   ├── architecture.md
-│   ├── troubleshooting.md
-│   └── [feature-specific].md
-├── infrastructure/             # AWS setup
-│   ├── README.md
-│   ├── setup-guide-rds.md
-│   └── [deployment-guides].md
-└── frontend/                   # Frontend docs
+│   ├── REMAINING_FEATURES_AND_TASKS.md
+│   ├── architecture/          # System design
+│   │   ├── architecture.md
+│   │   ├── data-model.md
+│   │   └── [tech-comparisons].md
+│   ├── deployment/            # Deployment guides
+│   │   ├── DEPLOYMENT_INSTRUCTIONS.md
+│   │   ├── deployment-checklist.md
+│   │   └── [setup-guides].md
+│   ├── features/              # Feature documentation
+│   │   ├── [FEATURE]_GUIDE.md
+│   │   ├── [FEATURE]_FUTURE_ENHANCEMENTS.md
+│   │   └── [investigations].md
+│   ├── guides/                # User/dev guides
+│   │   ├── quick-start.md
+│   │   ├── troubleshooting.md
+│   │   └── [how-to-guides].md
+│   ├── security/              # Security docs
+│   │   ├── CREDENTIALS_GUIDE.md
+│   │   └── [security-docs].md
+│   ├── testing/               # Testing procedures
+│   │   └── [test-guides].md
+│   └── history/               # Historical records
+│       └── [change-summaries].md
+└── infrastructure/             # AWS setup
     ├── README.md
-    ├── USER_GUIDE.md
-    └── SETUP.md
+    ├── setup-guide-rds.md
+    └── [deployment-guides].md
 ```
 
 ## Formatting Rules
@@ -73,8 +91,87 @@ DO NOT create files like:
 - `*-READY.md`
 - `*-SUCCESS.md`
 - `PHASE-*-COMPLETE.md`
+- `*-COMPLETE.md`
+- `*-DEPLOYMENT-COMPLETE.md`
+- `*-MIGRATION-COMPLETE.md`
 
 Instead, update `docs/IMPLEMENTATION_SUMMARY.md` with new information.
+
+## File Placement Rules
+
+### Root Directory (ONLY these files allowed)
+- `README.md` - Repository overview
+- `CONTRIBUTING.md` - Contribution guidelines
+- `QUICK_START.md` - 5-minute setup guide
+- `START_HERE.md` - Entry point for new users
+- `DEPLOYMENT-GUIDE.md` - Main deployment instructions
+- `LICENSE` - License file
+- `.gitignore`, `.env.example` - Configuration files
+
+### docs/ Directory Structure
+
+Documentation is organized into category folders:
+
+#### docs/architecture/ - System design and data models
+- Architecture overviews: `docs/architecture/architecture.md`
+- Data models: `docs/architecture/data-model.md`
+- Technology comparisons: `docs/architecture/TECH_A_VS_TECH_B.md`
+
+#### docs/deployment/ - Deployment and infrastructure
+- Deployment guides: `docs/deployment/DEPLOYMENT_INSTRUCTIONS.md`
+- Build verification: `docs/deployment/BUILD_VERIFICATION.md`
+- Infrastructure setup: `docs/deployment/SERVICE_SETUP.md`
+- Deployment checklists: `docs/deployment/deployment-checklist.md`
+
+#### docs/features/ - Feature-specific documentation
+- Feature guides: `docs/features/FEATURE_NAME_GUIDE.md`
+- Future enhancements: `docs/features/FEATURE_NAME_FUTURE_ENHANCEMENTS.md`
+- Feature investigations: `docs/features/TOPIC_INVESTIGATION.md`
+- Feature strategies: `docs/features/STRATEGY_NAME.md`
+
+#### docs/guides/ - User and developer guides
+- Quick start: `docs/guides/quick-start.md`
+- Troubleshooting: `docs/guides/troubleshooting.md`
+- How-to guides: `docs/guides/TASK_NAME_GUIDE.md`
+- Best practices: `docs/guides/TOPIC-best-practices.md`
+
+#### docs/security/ - Security documentation
+- Security guides: `docs/security/CREDENTIALS_GUIDE.md`
+- Security audits: `docs/security/AUDIT_SUMMARY.md`
+- Security action plans: `docs/security/ACTION_PLAN.md`
+- Security fixes: `docs/security/FIXES_SUMMARY.md`
+
+#### docs/testing/ - Testing procedures
+- Test guides: `docs/testing/QUICK_TEST_GUIDE.md`
+- Testing procedures: `docs/testing/TEST_FEATURE_NAME.md`
+- Phase testing: `docs/testing/PHASE_N_TESTING_GUIDE.md`
+
+#### docs/history/ - Historical documentation
+- Change summaries: `docs/history/CHANGE_SUMMARY.md`
+- Migration records: `docs/history/MIGRATION_NAME.md`
+- Reorganization notes: `docs/history/DOCUMENTATION_CLEANUP_DATE.md`
+
+#### docs/ root level - Only these files
+- `docs/README.md` - Documentation index
+- `docs/IMPLEMENTATION_SUMMARY.md` - Main implementation summary
+- `docs/REMAINING_FEATURES_AND_TASKS.md` - Roadmap
+
+### infrastructure/ Directory (Infrastructure documentation)
+- Setup guides: `infrastructure/setup-guide-*.md`
+- Deployment scripts: `infrastructure/*.sh`
+- IAM policies: `infrastructure/*.json`
+- Infrastructure configs: `infrastructure/*.yaml`
+
+## Naming Conventions
+
+- Use UPPERCASE with underscores: `FEATURE_NAME_GUIDE.md`
+- Be descriptive but concise
+- Avoid redundant words (e.g., "DOCUMENT" in filename)
+- Use consistent suffixes:
+  - `_GUIDE.md` for how-to guides
+  - `_SUMMARY.md` for summaries
+  - `_INVESTIGATION.md` for research/investigation
+  - `_FUTURE_ENHANCEMENTS.md` for roadmap items
 
 ## Documentation Checklist
 

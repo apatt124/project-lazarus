@@ -16,8 +16,9 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import CustomNode from './graph/CustomNode';
 import CustomEdge from './graph/CustomEdge';
-import GraphControls from './graph/GraphControls';
+import GraphControls, { LayoutType } from './graph/GraphControls';
 import NodeDetailPanel from './graph/NodeDetailPanel';
+import { Theme } from '../lib/themes';
 
 const nodeTypes = {
   custom: CustomNode,
@@ -29,6 +30,7 @@ const edgeTypes = {
 
 interface KnowledgeGraphProps {
   userId: string;
+  theme: Theme;
 }
 
 interface Relationship {
@@ -56,7 +58,7 @@ interface TimelineEvent {
   fact_id: string;
 }
 
-const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
+const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) => {
   const { setCenter } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -74,6 +76,9 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Node[]>([]);
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
+  const [layoutType, setLayoutType] = useState<LayoutType>('custom');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isGeneratingAILayout, setIsGeneratingAILayout] = useState(false);
 
   const API_BASE = import.meta.env.VITE_API_URL;
 
@@ -138,9 +143,12 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
     }
   }, [nodes, edges, setEdges, calculateOptimalHandles]);
 
-  // Load saved node positions from localStorage
-  const loadNodePositions = useCallback(() => {
-    const saved = localStorage.getItem('knowledgeGraphPositions');
+  // Load node positions from localStorage (separate storage for custom and AI)
+  const loadNodePositions = useCallback((layoutType: LayoutType) => {
+    const storageKey = layoutType === 'custom' 
+      ? 'knowledgeGraphCustomLayout' 
+      : 'knowledgeGraphAILayout';
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -153,18 +161,193 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
   }, []);
 
   // Save node positions to localStorage
-  const saveNodePositions = useCallback((nodes: Node[]) => {
+  const saveNodePositions = useCallback((nodes: Node[], layoutType: LayoutType) => {
     const positions: Record<string, { x: number; y: number }> = {};
     nodes.forEach(node => {
       positions[node.id] = { x: node.position.x, y: node.position.y };
     });
-    localStorage.setItem('knowledgeGraphPositions', JSON.stringify(positions));
+    const storageKey = layoutType === 'custom' 
+      ? 'knowledgeGraphCustomLayout' 
+      : 'knowledgeGraphAILayout';
+    localStorage.setItem(storageKey, JSON.stringify(positions));
   }, []);
 
-  // Handle node drag end to save positions
+  // Handle node drag end
   const handleNodeDragStop = useCallback((_event: React.MouseEvent, _node: Node, nodes: Node[]) => {
-    saveNodePositions(nodes);
-  }, [saveNodePositions]);
+    if (layoutType === 'custom') {
+      // In custom mode, auto-save to custom layout
+      saveNodePositions(nodes, 'custom');
+    } else {
+      // In AI mode, mark as having unsaved changes
+      setHasUnsavedChanges(true);
+    }
+  }, [layoutType, saveNodePositions]);
+
+  // Save current positions as custom layout
+  const handleSaveCustomLayout = useCallback(() => {
+    saveNodePositions(nodes, 'custom');
+    setLayoutType('custom');
+    setHasUnsavedChanges(false);
+  }, [nodes, saveNodePositions]);
+
+  // Regenerate AI layout (clear cache and generate new)
+  const handleRegenerateAILayout = useCallback(async () => {
+    console.log('=== FRONTEND: Regenerating AI Layout ===');
+    
+    // Clear the saved AI layout from localStorage
+    localStorage.removeItem('knowledgeGraphAILayout');
+    
+    setIsGeneratingAILayout(true);
+    try {
+      // Prepare graph data for AI
+      const graphData = {
+        nodes: nodes.map(n => ({
+          id: n.id,
+          content: n.data.content,
+          type: n.data.type,
+        })),
+        edges: edges.map(e => ({
+          source: e.source,
+          target: e.target,
+          relationshipType: e.data?.relationshipType,
+          strength: e.data?.strength,
+        })),
+      };
+      
+      console.log('Requesting new AI layout for', graphData.nodes.length, 'nodes');
+      
+      const response = await fetch(`${API_BASE}/relationships/ai-layout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(graphData),
+      });
+      
+      const result = await response.json();
+      
+      console.log('AI Layout regeneration response:', result.success);
+      
+      if (result.success && result.positions) {
+        // Save the new AI-generated positions to localStorage
+        const positions: Record<string, { x: number; y: number }> = {};
+        Object.entries(result.positions).forEach(([nodeId, pos]: [string, any]) => {
+          positions[nodeId] = { x: pos.x, y: pos.y };
+        });
+        localStorage.setItem('knowledgeGraphAILayout', JSON.stringify(positions));
+        
+        // Update nodes with new positions
+        setNodes((currentNodes) => 
+          currentNodes.map(node => {
+            const newPos = positions[node.id];
+            if (newPos) {
+              return {
+                ...node,
+                position: { x: newPos.x, y: newPos.y },
+              };
+            }
+            return node;
+          })
+        );
+        
+        console.log('AI layout regenerated and applied successfully');
+      } else {
+        console.error('AI layout regeneration failed:', result.error);
+        alert(`Failed to regenerate AI layout: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error: unknown) {
+      console.error('Error regenerating AI layout:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to regenerate AI layout: ${errorMessage}`);
+    } finally {
+      setIsGeneratingAILayout(false);
+    }
+  }, [nodes, edges, API_BASE, setNodes]);
+
+  // Handle layout change
+  const handleLayoutChange = useCallback(async (layout: LayoutType) => {
+    console.log('=== FRONTEND: Layout Change Requested ===', layout);
+    
+    // If switching to AI layout, check if we need to generate it
+    if (layout === 'ai') {
+      const savedAIPositions = loadNodePositions('ai');
+      const hasSavedAILayout = Object.keys(savedAIPositions).length > 0;
+      
+      console.log('Has saved AI layout:', hasSavedAILayout);
+      
+      // Only generate if we don't have a saved AI layout
+      if (!hasSavedAILayout) {
+        setIsGeneratingAILayout(true);
+        try {
+          console.log('=== FRONTEND: Requesting AI Layout ===');
+          
+          // Prepare graph data for AI
+          const graphData = {
+            nodes: nodes.map(n => ({
+              id: n.id,
+              content: n.data.content,
+              type: n.data.type,
+            })),
+            edges: edges.map(e => ({
+              source: e.source,
+              target: e.target,
+              relationshipType: e.data?.relationshipType,
+              strength: e.data?.strength,
+            })),
+          };
+          
+          console.log('Graph data being sent:', {
+            nodeCount: graphData.nodes.length,
+            edgeCount: graphData.edges.length,
+            sampleNode: graphData.nodes[0],
+            sampleEdge: graphData.edges[0]
+          });
+          
+          const response = await fetch(`${API_BASE}/relationships/ai-layout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(graphData),
+          });
+          
+          const result = await response.json();
+          
+          console.log('=== FRONTEND: AI Layout Response ===');
+          console.log('Success:', result.success);
+          console.log('Positions received:', result.positions ? Object.keys(result.positions).length : 0);
+          console.log('Sample positions:', result.positions ? Object.entries(result.positions).slice(0, 3) : []);
+          console.log('Full result:', result);
+          
+          if (result.success && result.positions) {
+            // Save the AI-generated positions to localStorage
+            const positions: Record<string, { x: number; y: number }> = {};
+            Object.entries(result.positions).forEach(([nodeId, pos]: [string, any]) => {
+              positions[nodeId] = { x: pos.x, y: pos.y };
+            });
+            localStorage.setItem('knowledgeGraphAILayout', JSON.stringify(positions));
+            console.log('Saved AI positions to localStorage');
+          } else {
+            console.error('AI layout generation failed:', result.error);
+            alert(`AI layout failed: ${result.error || 'Unknown error'}`);
+            setIsGeneratingAILayout(false);
+            return; // Don't change layout type if generation failed
+          }
+        } catch (error: unknown) {
+          console.error('=== FRONTEND: AI Layout Error ===');
+          console.error('Error:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          alert(`Failed to generate AI layout: ${errorMessage}`);
+          setIsGeneratingAILayout(false);
+          return; // Don't change layout type if generation failed
+        } finally {
+          setIsGeneratingAILayout(false);
+        }
+      } else {
+        console.log('Using saved AI layout from localStorage');
+      }
+    }
+    
+    // Now change the layout type, which will trigger the useEffect to apply positions
+    setLayoutType(layout);
+    setHasUnsavedChanges(false);
+  }, [nodes, edges, API_BASE, loadNodePositions]);
 
   // Fetch timeline events
   useEffect(() => {
@@ -244,9 +427,9 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       }
     });
 
-    const savedPositions = loadNodePositions();
+    const savedPositions = loadNodePositions(layoutType);
 
-    // Build adjacency map for hierarchical layout
+    // Build adjacency map and connection counts (used by multiple layouts)
     const adjacencyMap = new Map<string, Set<string>>();
     filteredRelationships.forEach((rel) => {
       if (!adjacencyMap.has(rel.source_fact_id)) {
@@ -255,7 +438,6 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       adjacencyMap.get(rel.source_fact_id)!.add(rel.target_fact_id);
     });
 
-    // Find nodes with most connections
     const nodeArray = Array.from(factMap.values());
     const connectionCounts = new Map<string, number>();
     nodeArray.forEach(node => {
@@ -270,53 +452,11 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       return countB - countA;
     });
 
-    // Hierarchical layout
     const graphNodes: Node[] = [];
-    const levelSpacing = 400;
     const centerX = 500;
     const centerY = 400;
 
-    const placed = new Set<string>();
-    const levels: string[][] = [];
-    
-    const hubCount = Math.min(3, sortedNodes.length);
-    levels[0] = sortedNodes.slice(0, hubCount).map(n => n.id);
-    levels[0].forEach(id => placed.add(id));
-
-    let currentLevel = 0;
-    while (placed.size < nodeArray.length && currentLevel < 10) {
-      const nextLevel: string[] = [];
-      const currentLevelNodes = levels[currentLevel] || [];
-      
-      currentLevelNodes.forEach(nodeId => {
-        const connections = adjacencyMap.get(nodeId) || new Set();
-        connections.forEach(connectedId => {
-          if (!placed.has(connectedId)) {
-            nextLevel.push(connectedId);
-            placed.add(connectedId);
-          }
-        });
-        
-        filteredRelationships.forEach(rel => {
-          if (rel.target_fact_id === nodeId && !placed.has(rel.source_fact_id)) {
-            nextLevel.push(rel.source_fact_id);
-            placed.add(rel.source_fact_id);
-          }
-        });
-      });
-      
-      if (nextLevel.length > 0) {
-        levels[currentLevel + 1] = nextLevel;
-      }
-      currentLevel++;
-    }
-
-    const unplaced = nodeArray.filter(n => !placed.has(n.id));
-    if (unplaced.length > 0) {
-      levels.push(unplaced.map(n => n.id));
-    }
-
-    // Collision detection
+    // Collision detection helper
     const checkCollision = (x: number, y: number, existingNodes: Node[], minDistance: number = 280) => {
       for (const node of existingNodes) {
         const dx = node.position.x - x;
@@ -329,58 +469,103 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
       return false;
     };
 
-    // Position nodes
-    levels.forEach((levelNodes, levelIndex) => {
-      const radius = levelIndex * levelSpacing;
-      const angleStep = (2 * Math.PI) / Math.max(levelNodes.length, 1);
+    // Apply layout based on selected type
+    if (layoutType === 'custom') {
+      // Custom layout: use saved positions, fall back to AI if none exist
+      const hasCustomPositions = Object.keys(savedPositions).length > 0;
       
-      levelNodes.forEach((nodeId, indexInLevel) => {
-        const fact = factMap.get(nodeId);
-        if (!fact) return;
-        
-        let x, y;
-        const savedPos = savedPositions[nodeId];
-        
-        if (savedPos) {
-          x = savedPos.x;
-          y = savedPos.y;
-        } else {
-          let attempts = 0;
-          const maxAttempts = 50;
-          
-          do {
-            if (levelIndex === 0) {
-              if (levelNodes.length === 1) {
-                x = centerX;
-                y = centerY;
-              } else {
-                const angle = indexInLevel * angleStep + (attempts * 0.1);
-                const hubRadius = 200;
-                x = centerX + Math.cos(angle) * hubRadius;
-                y = centerY + Math.sin(angle) * hubRadius;
-              }
-            } else {
-              const angle = indexInLevel * angleStep + (attempts * 0.05);
-              const adjustedRadius = radius + (attempts * 20);
-              x = centerX + Math.cos(angle) * adjustedRadius;
-              y = centerY + Math.sin(angle) * adjustedRadius;
-            }
-            attempts++;
-          } while (checkCollision(x, y, graphNodes) && attempts < maxAttempts);
-        }
-        
-        graphNodes.push({
-          id: fact.id,
-          type: 'custom',
-          position: { x, y },
-          data: {
-            content: fact.content,
-            type: fact.type,
-            highlighted: highlightedNodes.has(fact.id),
-          },
+      if (hasCustomPositions) {
+        nodeArray.forEach((fact) => {
+          const savedPos = savedPositions[fact.id];
+          if (savedPos) {
+            graphNodes.push({
+              id: fact.id,
+              type: 'custom',
+              position: { x: savedPos.x, y: savedPos.y },
+              data: {
+                content: fact.content,
+                type: fact.type,
+                highlighted: highlightedNodes.has(fact.id),
+              },
+            });
+          }
         });
-      });
-    });
+      }
+      
+      // If no custom positions or some nodes missing, use AI layout for those
+      if (!hasCustomPositions || graphNodes.length < nodeArray.length) {
+        // Fall through to AI layout for missing nodes
+      } else {
+        // All nodes positioned, skip to edges
+      }
+    }
+    
+    if (layoutType === 'ai' || (layoutType === 'custom' && graphNodes.length < nodeArray.length)) {
+      // AI-Optimized layout: use saved AI positions or wait for API call
+      const positionedIds = new Set(graphNodes.map(n => n.id));
+      const nodesToPosition = nodeArray.filter(n => !positionedIds.has(n.id));
+      
+      // Check if we have saved AI positions
+      const hasSavedAIPositions = Object.keys(savedPositions).length > 0;
+      
+      if (layoutType === 'ai' && hasSavedAIPositions) {
+        // Use saved AI positions
+        nodeArray.forEach((fact) => {
+          const savedPos = savedPositions[fact.id];
+          if (savedPos) {
+            graphNodes.push({
+              id: fact.id,
+              type: 'custom',
+              position: { x: savedPos.x, y: savedPos.y },
+              data: {
+                content: fact.content,
+                type: fact.type,
+                highlighted: highlightedNodes.has(fact.id),
+              },
+            });
+          }
+        });
+      } else if (layoutType === 'ai' && !hasSavedAIPositions) {
+        // AI layout requested but no positions yet - use temporary fallback
+        // The handleLayoutChange function will call the API and update positions
+        nodeArray.forEach((fact, index) => {
+          const angle = (index / nodeArray.length) * 2 * Math.PI;
+          const radius = 400;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x, y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        });
+      } else if (layoutType === 'custom' && nodesToPosition.length > 0) {
+        // Custom layout with some missing nodes - use simple circular for new ones
+        nodesToPosition.forEach((fact, index) => {
+          const angle = (index / nodesToPosition.length) * 2 * Math.PI;
+          const radius = 400;
+          const x = centerX + Math.cos(angle) * radius;
+          const y = centerY + Math.sin(angle) * radius;
+          
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x, y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        });
+      }
+    }
 
     // Create edges
     const graphEdges: Edge[] = filteredRelationships.map((rel) => {
@@ -415,7 +600,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
 
     setNodes(graphNodes);
     setEdges(graphEdges);
-  }, [allRelationships, filters, currentTime, highlightedNodes, setNodes, setEdges, calculateOptimalHandles, loadNodePositions]);
+  }, [allRelationships, filters, currentTime, highlightedNodes, layoutType, setNodes, setEdges, calculateOptimalHandles, loadNodePositions]);
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
@@ -527,7 +712,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
         zoomOnDoubleClick={false}
       >
         <Background color="#444" gap={16} size={1} />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} showFitView={false} showZoom={true} />
         <MiniMap 
           nodeColor={(node) => {
             const type = node.data.type;
@@ -550,25 +735,31 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId }) => {
             border: '1px solid #374151',
           }}
         />
-        
-        <Panel position="top-left" className="bg-white rounded-lg shadow-lg p-4 m-4" style={{ zIndex: 2147483648 }}>
-          <GraphControls 
-            filters={filters} 
-            onFilterChange={handleFilterChange}
-            currentTime={currentTime}
-            timelineEvents={timelineEvents}
-            onTimeChange={handleTimeChange}
-            searchQuery={searchQuery}
-            searchResults={searchResults.map(n => ({
-              id: n.id,
-              content: n.data.content,
-              type: n.data.type,
-            }))}
-            onSearch={handleSearch}
-            onSearchResultClick={handleSearchResultClick}
-          />
-        </Panel>
       </ReactFlow>
+
+      {/* Graph Controls Sidebar - Outside ReactFlow for proper z-index */}
+      <GraphControls 
+        filters={filters} 
+        onFilterChange={handleFilterChange}
+        currentTime={currentTime}
+        timelineEvents={timelineEvents}
+        onTimeChange={handleTimeChange}
+        searchQuery={searchQuery}
+        searchResults={searchResults.map(n => ({
+          id: n.id,
+          content: n.data.content,
+          type: n.data.type,
+        }))}
+        onSearch={handleSearch}
+        onSearchResultClick={handleSearchResultClick}
+        layoutType={layoutType}
+        onLayoutChange={handleLayoutChange}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onSaveCustomLayout={handleSaveCustomLayout}
+        onRegenerateAILayout={handleRegenerateAILayout}
+        isGeneratingAILayout={isGeneratingAILayout}
+        theme={theme}
+      />
 
       {selectedNode && createPortal(
         <>
