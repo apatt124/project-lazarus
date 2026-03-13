@@ -34,18 +34,25 @@ const getNodeIcon = (type: string) => {
 const CustomNode: React.FC<NodeProps> = ({ data, selected }) => {
   const style = getNodeStyle(data.type);
   const icon = getNodeIcon(data.type);
+  const isHighlighted = data.highlighted || false;
 
   return (
     <div 
       style={{
         backgroundColor: style.bg,
-        borderColor: style.border,
+        borderColor: selected ? '#fbbf24' : isHighlighted ? '#a78bfa' : style.border,
         color: style.text,
-        borderWidth: '2px',
+        borderWidth: selected ? '4px' : isHighlighted ? '3px' : '2px',
         borderStyle: 'solid',
+        boxShadow: selected 
+          ? '0 0 0 6px rgba(251, 191, 36, 0.4), 0 0 30px rgba(251, 191, 36, 0.6), 0 20px 25px -5px rgba(0, 0, 0, 0.3)' 
+          : isHighlighted
+          ? '0 0 0 4px rgba(167, 139, 250, 0.3), 0 0 20px rgba(167, 139, 250, 0.4)'
+          : undefined,
+        transform: selected ? 'scale(1.08)' : isHighlighted ? 'scale(1.04)' : 'scale(1)',
       }}
-      className={`px-4 py-3 rounded-lg shadow-lg w-[220px] transition-all cursor-pointer hover:shadow-xl ${
-        selected ? 'ring-4 ring-purple-500 ring-opacity-50' : ''
+      className={`px-4 py-3 rounded-lg shadow-lg w-[220px] transition-all duration-300 cursor-pointer hover:shadow-xl ${
+        selected ? 'animate-pulse-ring-gold' : ''
       }`}
     >
       {/* Handles on all sides for better routing */}

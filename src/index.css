@@ -249,3 +249,31 @@ input[type="range"]:focus::-moz-range-thumb {
 .timeline-slider::-moz-range-thumb:active {
   transform: scale(1.1);
 }
+
+/* Knowledge Graph - Selected Node Animation */
+@keyframes pulseRing {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0.2), 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Gold/Amber selection ring for dark backgrounds */
+@keyframes pulseRingGold {
+  0%, 100% {
+    box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.4), 0 0 30px rgba(251, 191, 36, 0.6), 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(251, 191, 36, 0.3), 0 0 40px rgba(251, 191, 36, 0.8), 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  }
+}
+
+.animate-pulse-ring-gold {
+  animation: pulseRingGold 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

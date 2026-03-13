@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { EdgeProps, getBezierPath, EdgeLabelRenderer } from 'reactflow';
+import { EdgeProps, getBezierPath, EdgeLabelRenderer, useStore } from 'reactflow';
 
 const getEdgeColor = (type: string) => {
   const colors: Record<string, string> = {
@@ -42,6 +42,9 @@ const CustomEdge: React.FC<EdgeProps> = ({
   data,
   selected,
 }) => {
+  // Get current zoom level to adjust label visibility
+  const zoom = useStore((state) => state.transform[2]);
+  
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -54,7 +57,14 @@ const CustomEdge: React.FC<EdgeProps> = ({
   const color = getEdgeColor(data?.relationshipType || '');
   const label = getEdgeLabel(data?.relationshipType || '');
   const strength = data?.strength || 0.5;
-  const strokeWidth = 1 + strength * 3; // 1-4px based on strength
+  
+  // Visual strength indicators - more dramatic range for high-strength values
+  // Use exponential scaling to make differences more visible
+  const strokeWidth = 1 + Math.pow(strength, 2) * 7; // 1-8px, exponential scaling
+  const opacity = selected ? 1 : 0.3 + (strength * 0.7); // 0.3-1.0 based on strength
+
+  // Only show labels when zoomed in enough or when selected
+  const showLabel = zoom > 0.5 || selected;
 
   return (
     <>
@@ -67,49 +77,54 @@ const CustomEdge: React.FC<EdgeProps> = ({
         fill="none"
         markerEnd="url(#arrowhead)"
         style={{
-          opacity: selected ? 1 : 0.7,
+          opacity: opacity,
+          transition: 'all 0.2s ease',
         }}
       />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: 'all',
-            backgroundColor: selected ? '#ffffff' : 'rgba(255, 255, 255, 0.95)',
-            color: color,
-            borderWidth: '2px',
-            borderStyle: 'solid',
-            borderColor: color,
-            fontSize: selected ? '11px' : '10px',
-            fontWeight: 600,
-            padding: selected ? '6px 10px' : '4px 8px',
-            borderRadius: '12px',
-            boxShadow: selected 
-              ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
-              : '0 2px 4px rgba(0,0,0,0.08)',
-            zIndex: selected ? 20 : 10,
-            transition: 'all 0.2s ease',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-          }}
-          title={data?.reasoning}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1.05)`;
-            e.currentTarget.style.boxShadow = `0 6px 16px ${color}50, 0 3px 6px rgba(0,0,0,0.15)`;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1)`;
-            e.currentTarget.style.boxShadow = selected 
-              ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
-              : '0 2px 4px rgba(0,0,0,0.08)';
-          }}
-        >
-          {label}
-        </div>
-      </EdgeLabelRenderer>
+      {showLabel && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: 'all',
+              backgroundColor: selected ? '#ffffff' : 'rgba(255, 255, 255, 0.95)',
+              color: color,
+              borderWidth: '2px',
+              borderStyle: 'solid',
+              borderColor: color,
+              fontSize: Math.max(10, 10 * zoom) + 'px', // Scale with zoom
+              fontWeight: 600,
+              padding: selected ? '6px 10px' : '4px 8px',
+              borderRadius: '12px',
+              boxShadow: selected 
+                ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
+                : '0 2px 4px rgba(0,0,0,0.08)',
+              zIndex: selected ? 20 : 10,
+              transition: 'all 0.2s ease',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+            }}
+            title={data?.reasoning}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1.05)`;
+              e.currentTarget.style.boxShadow = `0 6px 16px ${color}50, 0 3px 6px rgba(0,0,0,0.15)`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = `translate(-50%, -50%) translate(${labelX}px,${labelY}px) scale(1)`;
+              e.currentTarget.style.boxShadow = selected 
+                ? `0 4px 12px ${color}40, 0 2px 4px rgba(0,0,0,0.1)` 
+                : '0 2px 4px rgba(0,0,0,0.08)';
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span>{label}</span>
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 };

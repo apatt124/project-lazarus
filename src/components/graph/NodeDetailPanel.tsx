@@ -4,7 +4,9 @@ import { Node, Edge } from 'reactflow';
 interface NodeDetailPanelProps {
   node: Node;
   edges: Edge[];
+  nodes: Node[];
   onClose: () => void;
+  onNodeSelect: (nodeId: string) => void;
 }
 
 const getNodeIcon = (type: string) => {
@@ -37,11 +39,23 @@ const getRelationshipColor = (type: string) => {
   return colors[type] || '#6b7280';
 };
 
-const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({ node, edges, onClose }) => {
+const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({ node, edges, nodes, onClose, onNodeSelect }) => {
   // Find all edges connected to this node
   const connectedEdges = edges.filter(
     edge => edge.source === node.id || edge.target === node.id
   );
+
+  const handleConnectionClick = (edge: Edge) => {
+    // Determine which node to navigate to (the other end of the connection)
+    const targetNodeId = edge.source === node.id ? edge.target : edge.source;
+    onNodeSelect(targetNodeId);
+  };
+
+  const getConnectedNodeContent = (edge: Edge) => {
+    const targetNodeId = edge.source === node.id ? edge.target : edge.source;
+    const targetNode = nodes.find(n => n.id === targetNodeId);
+    return targetNode?.data.content || 'Unknown';
+  };
 
   return (
     <div 
@@ -98,14 +112,24 @@ const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({ node, edges, onClose 
                 const relationshipType = edge.data?.relationshipType || 'related_to';
                 const strength = edge.data?.strength || 0.5;
                 const color = getRelationshipColor(relationshipType);
+                const connectedNodeContent = getConnectedNodeContent(edge);
                 
                 return (
                   <div
                     key={edge.id}
-                    className="p-3 rounded-lg"
+                    onClick={() => handleConnectionClick(edge)}
+                    className="p-3 rounded-lg cursor-pointer transition-all hover:shadow-md"
                     style={{
                       backgroundColor: '#f9fafb',
                       border: `1px solid ${color}20`,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = `${color}10`;
+                      e.currentTarget.style.borderColor = `${color}40`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#f9fafb';
+                      e.currentTarget.style.borderColor = `${color}20`;
                     }}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -123,6 +147,9 @@ const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({ node, edges, onClose 
                         {Math.round(strength * 100)}% strength
                       </span>
                     </div>
+                    <p className="text-xs font-medium mt-2 mb-1" style={{ color: '#374151' }}>
+                      → {connectedNodeContent}
+                    </p>
                     {edge.data?.reasoning && (
                       <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
                         {edge.data.reasoning}

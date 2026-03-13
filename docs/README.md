@@ -1,148 +1,113 @@
 # Project Lazarus Documentation
 
-## Overview
+Complete documentation for the Project Lazarus medical records management system.
 
-Complete documentation for Project Lazarus, a conversational AI assistant for managing personal medical records.
+## Quick Navigation
 
-## Contents
+- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - Overview of what has been built
+- [Remaining Features & Tasks](REMAINING_FEATURES_AND_TASKS.md) - Roadmap and future work
 
-### Getting Started
-- [Quick Start Guide](../QUICK_START.md) - Get up and running in 5 minutes
-- [User Guide](../old-frontend-docs/USER_GUIDE.md) - How to use the interface
-- [Deployment Guide](../DEPLOYMENT-GUIDE.md) - Deploy to AWS Amplify
-- [Frontend Moved to Root](FRONTEND_MOVED_TO_ROOT.md) - Repository restructure notes
+## Documentation Categories
 
-### Architecture & Design
-- [Architecture](architecture.md) - System design and components
-- [Data Model](data-model.md) - Database schema and relationships
-- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - What was built and why
+### Architecture
+System design, data models, and technical decisions.
 
-### Features & Capabilities
-- [Search Improvements](SEARCH_IMPROVEMENTS.md) - Semantic search enhancements
-- [Chunking Strategy](CHUNKING_STRATEGY.md) - Document processing approach
-- [ZIP Upload Feature](ZIP_UPLOAD_FEATURE.md) - Bulk document upload
-- [Enable Claude Access](ENABLE_CLAUDE_ACCESS.md) - AWS Bedrock setup
+- [architecture.md](architecture/architecture.md) - System architecture overview
+- [data-model.md](architecture/data-model.md) - Database schema and data structures
+- [rds-vs-opensearch.md](architecture/rds-vs-opensearch.md) - Database technology comparison
 
-### Testing & Validation
-- [Quick Test Guide](QUICK_TEST_GUIDE.md) - Verify functionality
-- [Phase 2 Testing Guide](PHASE_2_TESTING_GUIDE.md) - Comprehensive testing
-- [Test Conversational AI](TEST_CONVERSATIONAL_AI.md) - AI chat testing
+### Deployment
+Deployment guides, infrastructure setup, and build processes.
 
-### Operations & Maintenance
-- [Troubleshooting](troubleshooting.md) - Common issues and solutions
-- [Security Best Practices](security-best-practices.md) - Security guidelines
-- [CLI Tools Upgraded](CLI_TOOLS_UPGRADED.md) - Command-line utilities
-- [Build Verification](BUILD_VERIFICATION.md) - Build system validation
-- [Login System](LOGIN_SYSTEM.md) - Authentication documentation
+- [DEPLOYMENT_INSTRUCTIONS.md](deployment/DEPLOYMENT_INSTRUCTIONS.md) - Main deployment guide
+- [deployment-checklist.md](deployment/deployment-checklist.md) - Pre-deployment checklist
+- [LAMBDA_DEPLOYMENT_GUIDE.md](deployment/LAMBDA_DEPLOYMENT_GUIDE.md) - Lambda function deployment
+- [AMPLIFY_MULTI_BRANCH_SETUP.md](deployment/AMPLIFY_MULTI_BRANCH_SETUP.md) - Multi-branch deployment
+- [QUICK_MULTI_BRANCH_STEPS.md](deployment/QUICK_MULTI_BRANCH_STEPS.md) - Quick branch setup
+- [BUILD_VERIFICATION.md](deployment/BUILD_VERIFICATION.md) - Build validation steps
+- [AMPLIFY_ENV_VARS_FIXED.md](deployment/AMPLIFY_ENV_VARS_FIXED.md) - Environment variable setup
 
-### Planning & Roadmap
-- [Future Enhancements](future-enhancements.md) - Planned features
-- [Phase 2 Summary](PHASE_2_SUMMARY.md) - Development phases
-- [Google Calendar Integration](google-calendar-integration.md) - Planned integration
-- [Documentation Cleanup Summary](DOCUMENTATION_CLEANUP_SUMMARY.md) - Recent reorganization
+### Features
+Feature-specific documentation and implementation guides.
 
-### Infrastructure
-- [Infrastructure Setup](../infrastructure/setup-guide-rds.md) - AWS deployment
-- [Cost Estimates](../infrastructure/cost-estimates.md) - Monthly costs
-- [GitHub Setup](../infrastructure/GITHUB_SETUP.md) - Repository configuration
-- [Amplify Setup](../infrastructure/AMPLIFY_SETUP_STEPS.md) - Hosting deployment
-- [Amplify Multi-Branch Setup](AMPLIFY_MULTI_BRANCH_SETUP.md) - Branch deployments
-- [Amplify Environment Variables](AMPLIFY_ENV_VARS_FIXED.md) - Configuration notes
+- [FACT_EXTRACTION_GUIDE.md](features/FACT_EXTRACTION_GUIDE.md) - Medical fact extraction
+- [KNOWLEDGE_GRAPH_FUTURE_ENHANCEMENTS.md](features/KNOWLEDGE_GRAPH_FUTURE_ENHANCEMENTS.md) - Knowledge graph roadmap
+- [LOGIN_SYSTEM.md](features/LOGIN_SYSTEM.md) - Authentication system
+- [SEARCH_IMPROVEMENTS.md](features/SEARCH_IMPROVEMENTS.md) - Search functionality
+- [VECTOR_SEARCH_INVESTIGATION.md](features/VECTOR_SEARCH_INVESTIGATION.md) - Vector search research
+- [ZIP_UPLOAD_FEATURE.md](features/ZIP_UPLOAD_FEATURE.md) - Bulk document upload
+- [CHUNKING_STRATEGY.md](features/CHUNKING_STRATEGY.md) - Document chunking approach
+- [google-calendar-integration.md](features/google-calendar-integration.md) - Calendar integration
+- [future-enhancements.md](features/future-enhancements.md) - Planned features
 
-## Quick Links
+### Guides
+User and developer guides for common tasks.
 
-### I want to...
+- [quick-start.md](guides/quick-start.md) - Get started quickly
+- [troubleshooting.md](guides/troubleshooting.md) - Common issues and solutions
+- [CREDENTIAL_STORAGE_GUIDE.md](guides/CREDENTIAL_STORAGE_GUIDE.md) - Managing credentials
+- [ENABLE_CLAUDE_ACCESS.md](guides/ENABLE_CLAUDE_ACCESS.md) - Claude API setup
+- [security-best-practices.md](guides/security-best-practices.md) - Security guidelines
 
-**Get started quickly**
-→ [Quick Start Guide](../QUICK_START.md)
+### Security
+Security documentation, audits, and credentials management.
 
-**Deploy to production**
-→ [Deployment Guide](../DEPLOYMENT-GUIDE.md)
+- [CREDENTIALS_GUIDE.md](security/CREDENTIALS_GUIDE.md) - Credential management
+- [ACTION_PLAN.md](security/ACTION_PLAN.md) - Security action plan
+- [AUDIT_SUMMARY.md](security/AUDIT_SUMMARY.md) - Security audit results
+- [FIXES_SUMMARY.md](security/FIXES_SUMMARY.md) - Security fixes applied
 
-**Understand the architecture**
-→ [Architecture](architecture.md)
+### Testing
+Testing guides and procedures.
 
-**Fix a problem**
-→ [Troubleshooting](troubleshooting.md)
+- [QUICK_TEST_GUIDE.md](testing/QUICK_TEST_GUIDE.md) - Quick testing guide
+- [TEST_CONVERSATIONAL_AI.md](testing/TEST_CONVERSATIONAL_AI.md) - AI testing procedures
+- [PHASE_2_TESTING_GUIDE.md](testing/PHASE_2_TESTING_GUIDE.md) - Phase 2 testing
 
-**Learn what was built**
-→ [Implementation Summary](IMPLEMENTATION_SUMMARY.md)
+### History
+Historical documentation and change summaries.
 
-**Set up AWS Bedrock**
-→ [Enable Claude Access](ENABLE_CLAUDE_ACCESS.md)
+- [DOCUMENTATION_CLEANUP_2026_03_13.md](history/DOCUMENTATION_CLEANUP_2026_03_13.md) - Latest cleanup
+- [DOCUMENTATION_REORGANIZATION.md](history/DOCUMENTATION_REORGANIZATION.md) - Previous reorganization
+- [DOCUMENTATION_CLEANUP_SUMMARY.md](history/DOCUMENTATION_CLEANUP_SUMMARY.md) - Cleanup summary
+- [PHASE_2_SUMMARY.md](history/PHASE_2_SUMMARY.md) - Phase 2 implementation
+- [FRONTEND_MOVED_TO_ROOT.md](history/FRONTEND_MOVED_TO_ROOT.md) - Frontend restructure
+- [CLI_TOOLS_UPGRADED.md](history/CLI_TOOLS_UPGRADED.md) - CLI tool updates
 
-**Test the system**
-→ [Quick Test Guide](QUICK_TEST_GUIDE.md)
+## Documentation Standards
 
-## Common Tasks
+All documentation follows the standards defined in `.kiro/steering/documentation-standards.md`.
 
-### Upload a Document
-```bash
-# Start the app
-cd frontend && npm run dev
+### File Naming Conventions
 
-# Open browser to http://localhost:3737
-# Click Upload tab, drag and drop file
-```
+- Use UPPERCASE with underscores: `FEATURE_NAME_GUIDE.md`
+- Consistent suffixes:
+  - `_GUIDE.md` - How-to guides
+  - `_SUMMARY.md` - Summaries
+  - `_INVESTIGATION.md` - Research/investigation
+  - `_FUTURE_ENHANCEMENTS.md` - Roadmap items
 
-### Test Search Functionality
-```bash
-# Test vector search
-./scripts/test-search.sh "blood pressure"
+### Where to Add New Documentation
 
-# Test full chat
-./scripts/test-chat.sh "What's in my records?"
-```
-
-### Check System Status
-```bash
-# Test AWS Bedrock access
-./scripts/test-bedrock.sh
-
-# View Lambda logs
-./scripts/logs.sh
-
-# Check costs
-./scripts/check-costs.sh
-```
-
-### Database Operations
-```bash
-# Query database
-./scripts/db-query.sh count
-./scripts/db-query.sh list
-
-# Clean test data
-./scripts/clean-test-data.sh
-```
-
-## Support
-
-### Documentation Issues
-If you find errors or missing information in the documentation:
-1. Check the [Implementation Summary](IMPLEMENTATION_SUMMARY.md) for context
-2. Review the [Architecture](architecture.md) for technical details
-3. Consult the [Troubleshooting Guide](troubleshooting.md)
-
-### Technical Issues
-For technical problems:
-1. Check [Troubleshooting](troubleshooting.md) first
-2. Review CloudWatch logs: `./scripts/logs.sh`
-3. Verify AWS credentials: `aws sts get-caller-identity`
-4. Test components individually using scripts in `/scripts`
+- **Architecture docs** → `docs/architecture/`
+- **Deployment guides** → `docs/deployment/`
+- **Feature documentation** → `docs/features/`
+- **User/developer guides** → `docs/guides/`
+- **Security documentation** → `docs/security/`
+- **Testing procedures** → `docs/testing/`
+- **Historical records** → `docs/history/`
 
 ## Contributing
 
-This is a personal project, but improvements to documentation are welcome:
-1. Follow the [Kiro Documentation Standards](../.github/kiro-documentation-standards.md)
-2. Keep documentation up-to-date with code changes
-3. Use clear, actionable language
-4. Include code examples where helpful
+When adding new documentation:
 
-## Version History
+1. Place in the appropriate category folder
+2. Follow naming conventions
+3. Update this README with a link
+4. Use proper markdown formatting
+5. Include code examples where relevant
 
-- **v1.0** (2026-03-06): Initial documentation organization
-  - Consolidated status files into Implementation Summary
-  - Organized docs by category
-  - Created comprehensive README
-  - Followed Kiro documentation standards
+---
+
+**Last Updated**: March 13, 2026  
+**Documentation Structure**: v2.0

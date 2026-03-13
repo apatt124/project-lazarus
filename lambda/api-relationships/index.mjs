@@ -389,6 +389,362 @@ Only include relationships you're confident about (strength >= 0.5).`;
   };
 }
 
+// Helper function to detect overlaps
+function hasOverlap(pos1, pos2, minHorizontalGap = 280, minVerticalGap = 120) {
+  const dx = Math.abs(pos1.x - pos2.x);
+  const dy = Math.abs(pos1.y - pos2.y);
+  return dx < minHorizontalGap && dy < minVerticalGap;
+}
+
+// Helper function to fix overlaps using force-directed adjustment
+function fixOverlaps(positions, minHorizontalGap = 280, minVerticalGap = 120, maxIterations = 100) {
+  const nodeIds = Object.keys(positions);
+  let iteration = 0;
+  let hasOverlaps = true;
+  
+  while (hasOverlaps && iteration < maxIterations) {
+    hasOverlaps = false;
+    iteration++;
+    
+    for (let i = 0; i < nodeIds.length; i++) {
+      for (let j = i + 1; j < nodeIds.length; j++) {
+        const id1 = nodeIds[i];
+        const id2 = nodeIds[j];
+        const pos1 = positions[id1];
+        const pos2 = positions[id2];
+        
+        if (hasOverlap(pos1, pos2, minHorizontalGap, minVerticalGap)) {
+          hasOverlaps = true;
+          
+          // Calculate repulsion vector
+          const dx = pos2.x - pos1.x;
+          const dy = pos2.y - pos1.y;
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          
+          // Determine which direction to push (horizontal or vertical)
+          const horizontalGap = Math.abs(dx);
+          const verticalGap = Math.abs(dy);
+          
+          if (horizontalGap < minHorizontalGap && verticalGap < minVerticalGap) {
+            // Push in the direction with less gap
+            if (horizontalGap < verticalGap) {
+              // Push horizontally
+              const pushDistance = (minHorizontalGap - horizontalGap) / 2 + 10;
+              const direction = dx > 0 ? 1 : -1;
+              pos1.x -= direction * pushDistance;
+              pos2.x += direction * pushDistance;
+            } else {
+              // Push vertically
+              const pushDistance = (minVerticalGap - verticalGap) / 2 + 10;
+              const direction = dy > 0 ? 1 : -1;
+              pos1.y -= direction * pushDistance;
+              pos2.y += direction * pushDistance;
+            }
+          }
+        }
+      }
+    }
+    
+    // Keep nodes within bounds
+    for (const id of nodeIds) {
+      positions[id].x = Math.max(100, Math.min(900, positions[id].x));
+      positions[id].y = Math.max(100, Math.min(700, positions[id].y));
+    }
+  }
+  
+  console.log(`Fixed overlaps in ${iteration} iterations`);
+  return positions;
+}
+
+// Build adjacency information for clustering
+function buildGraphStructure(nodes, edges) {
+  const adjacency = new Map();
+  const nodeMap = new Map();
+  
+  nodes.forEach(n => {
+    nodeMap.set(n.id, n);
+    adjacency.set(n.id, []);
+  });
+  
+  edges.forEach(e => {
+    if (adjacency.has(e.source)) {
+      adjacency.get(e.source).push({ target: e.target, strength: e.strength || 0.5 });
+    }
+    if (adjacency.has(e.target)) {
+      adjacency.get(e.target).push({ target: e.source, strength: e.strength || 0.5 });
+    }
+  });
+  
+  return { adjacency, nodeMap };
+}
+
+// Find connected components
+function findConnectedComponents(nodes, adjacency) {
+  const visited = new Set();
+  const components = [];
+  
+  nodes.forEach(node => {
+    if (!visited.has(node.id)) {
+      const component = [];
+      const queue = [node.id];
+      
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (visited.has(current)) continue;
+        
+        visited.add(current);
+        component.push(current);
+        
+        const neighbors = adjacency.get(current) || [];
+        neighbors.forEach(neighbor => {
+          if (!visited.has(neighbor.target)) {
+            queue.push(neighbor.target);
+          }
+        });
+      }
+      
+      components.push(component);
+    }
+  });
+  
+  return components;
+}
+
+// Generate AI-optimized graph layout
+async function generateAILayout(graphData) {
+  const { nodes, edges } = graphData;
+  
+  console.log('=== AI LAYOUT REQUEST ===');
+  console.log('Number of nodes:', nodes.length);
+  console.log('Number of edges:', edges.length);
+  
+  // Build graph structure
+  const { adjacency, nodeMap } = buildGraphStructure(nodes, edges);
+  const components = findConnectedComponents(nodes, adjacency);
+  
+  console.log('Connected components:', components.length);
+  components.forEach((comp, i) => {
+    console.log(`Component ${i}: ${comp.length} nodes`);
+  });
+  
+  // Prepare graph description for Claude with component information
+  const graphDescription = {
+    nodes: nodes.map(n => ({
+      id: n.id,
+      content: n.content,
+      type: n.type,
+      connectionCount: (adjacency.get(n.id) || []).length
+    })),
+    relationships: edges.map(e => ({
+      source: e.source,
+      target: e.target,
+      type: e.relationshipType,
+      strength: e.strength
+    })),
+    components: components.map((comp, i) => ({
+      id: i,
+      nodeIds: comp,
+      size: comp.length
+    }))
+  };
+  
+  console.log('Graph structure:', JSON.stringify({
+    totalNodes: nodes.length,
+    totalEdges: edges.length,
+    components: components.length
+  }, null, 2));
+  
+  const prompt = `You are a medical knowledge graph visualization expert. Create a layout that minimizes edge crossings and keeps edges clear of nodes.
+
+GRAPH DATA:
+${JSON.stringify(graphDescription, null, 2)}
+
+CANVAS: 1000px × 800px (safe area: 100-900 x, 100-700 y)
+NODE SIZE: 220px wide × 56px tall
+
+CRITICAL OBJECTIVES (in priority order):
+1. MINIMIZE EDGE CROSSINGS - edges should not cross each other
+2. KEEP EDGES CLEAR - edges should not pass behind/through unrelated nodes
+3. TIGHT CLUSTERING - connected nodes should be close together
+4. COMPONENT SEPARATION - disconnected subgraphs should be far apart
+
+LAYOUT ALGORITHM:
+
+STEP 1: COMPONENT ANALYSIS
+- There are ${components.length} disconnected component(s)
+- Each component gets its own spatial region (400px+ separation)
+${components.length === 1 ? '- Single component: use full canvas' : '- Multiple components: divide canvas into quadrants/regions'}
+
+STEP 2: IDENTIFY GRAPH STRUCTURE
+For each component:
+- Find hub node (highest connectionCount) - this is the anchor
+- Identify "chains" (sequences of nodes connected in a line)
+- Identify "stars" (one node connected to many)
+- Identify "triangles" (3 nodes all connected to each other)
+
+STEP 3: LAYERED POSITIONING (CRITICAL FOR EDGE CLARITY)
+Use a hierarchical/layered approach to prevent edge crossings:
+
+Layer 0 (Center): Hub node (highest connectionCount)
+Layer 1 (Inner ring): Nodes directly connected to hub
+  - Position at 200-250px from hub
+  - Spread evenly around hub (360° / node_count)
+  - Group by type: medications right (0-90°), symptoms left (180-270°)
+  
+Layer 2 (Outer ring): Nodes connected to Layer 1 nodes
+  - Position at 350-400px from hub
+  - Place BEHIND their parent node (same angle ±30°)
+  - This keeps edges from crossing through the center
+
+STEP 4: EDGE CROSSING PREVENTION
+For each edge, check if it would cross other edges:
+- If edge A-B would cross edge C-D, adjust node positions
+- Prefer adjusting outer layer nodes (Layer 2) over inner (Layer 1)
+- Use angular separation: nodes with many connections get more angular space
+
+STEP 5: CLEAR EDGE PATHS
+Ensure edges don't pass through unrelated nodes:
+- For edge A→B, check if any node C is on the line segment
+- If node C is within 150px of the edge line, adjust positions
+- Move C perpendicular to the edge, or adjust A/B angles
+
+STEP 6: NODE TYPE POSITIONING (within layers)
+- medical_condition: Layer 0 (hub) or Layer 1 if not hub
+- medication: Right side (0-90°), Layer 1 or 2
+- symptom: Left side (180-270°), Layer 1 or 2  
+- provider: Bottom (240-300°), Layer 2
+- allergy: Top-right (30-60°), Layer 2
+- lifestyle: Left (150-210°), Layer 2
+
+SPACING RULES:
+- Minimum 280px horizontal between node centers
+- Minimum 120px vertical between node centers
+- Minimum 150px clearance between edge and unrelated node
+
+EXAMPLE LAYOUT PATTERN (for star topology):
+- Hub at (500, 400)
+- 6 connected nodes arranged in circle at 250px radius
+- Each at 60° intervals: 0°, 60°, 120°, 180°, 240°, 300°
+- This creates clear, non-crossing edges
+
+EXAMPLE LAYOUT PATTERN (for chain topology):
+- Arrange nodes in a line or gentle curve
+- Each node 280px from previous
+- Avoids any edge crossings (chain has no crossing edges)
+
+RESPONSE FORMAT (JSON only, no markdown):
+{
+  "positions": {
+    "node_id": { 
+      "x": 500, 
+      "y": 400, 
+      "reasoning": "Hub node, Layer 0, 8 connections, medical_condition"
+    },
+    "another_id": { 
+      "x": 700, 
+      "y": 400, 
+      "reasoning": "Medication, Layer 1, 0° from hub, strong connection (0.9), no edge crossings"
+    }
+  }
+}
+
+VERIFICATION CHECKLIST:
+✓ Hub nodes at component centers
+✓ Connected nodes arranged in layers (not scattered randomly)
+✓ Nodes with many connections have more angular space
+✓ No edges cross each other within a component
+✓ No edges pass through unrelated nodes
+✓ All positions within bounds: x[100-900], y[100-700]
+✓ Minimum spacing maintained (280px horizontal, 120px vertical)
+
+Think step-by-step:
+1. For each component, identify hub and topology (star/chain/mesh)
+2. Assign nodes to layers based on distance from hub
+3. Position Layer 0 (hub) at component center
+4. Position Layer 1 nodes in circle around hub, evenly spaced
+5. Position Layer 2 nodes behind their Layer 1 parents
+6. Check for edge crossings and adjust angles
+7. Check for edges passing through nodes and adjust positions
+8. Verify spacing rules and adjust if needed`;
+
+  try {
+    console.log('=== SENDING TO CLAUDE ===');
+    console.log('Model:', 'us.anthropic.claude-sonnet-4-20250514-v1:0');
+    console.log('Prompt length:', prompt.length, 'characters');
+    console.log('First 500 chars of prompt:', prompt.substring(0, 500));
+    
+    const command = new ConverseCommand({
+      modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      messages: [{
+        role: 'user',
+        content: [{ text: prompt }]
+      }],
+      inferenceConfig: {
+        maxTokens: 4000,
+        temperature: 0.2,
+      }
+    });
+    
+    const response = await bedrock.send(command);
+    const aiResponse = response.output.message.content[0].text;
+    
+    console.log('=== CLAUDE RESPONSE ===');
+    console.log('Response length:', aiResponse.length, 'characters');
+    console.log('Full response:', aiResponse);
+    
+    // Parse JSON response
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('ERROR: No JSON found in response');
+      return {
+        success: false,
+        error: 'No JSON found in Claude response'
+      };
+    }
+    
+    console.log('Extracted JSON:', jsonMatch[0].substring(0, 500));
+    const layoutData = JSON.parse(jsonMatch[0]);
+    
+    console.log('=== PARSED LAYOUT ===');
+    console.log('Number of positions:', Object.keys(layoutData.positions || {}).length);
+    console.log('Sample positions (before overlap fix):', JSON.stringify(Object.entries(layoutData.positions || {}).slice(0, 3), null, 2));
+    
+    // Post-process: Fix any overlaps
+    const positions = layoutData.positions;
+    const fixedPositions = fixOverlaps(positions, 280, 120, 100);
+    
+    // Verify no overlaps remain
+    const nodeIds = Object.keys(fixedPositions);
+    let overlapCount = 0;
+    for (let i = 0; i < nodeIds.length; i++) {
+      for (let j = i + 1; j < nodeIds.length; j++) {
+        if (hasOverlap(fixedPositions[nodeIds[i]], fixedPositions[nodeIds[j]], 280, 120)) {
+          overlapCount++;
+        }
+      }
+    }
+    
+    console.log('=== OVERLAP CHECK ===');
+    console.log('Remaining overlaps:', overlapCount);
+    console.log('Sample positions (after overlap fix):', JSON.stringify(Object.entries(fixedPositions).slice(0, 3), null, 2));
+    
+    return {
+      success: true,
+      positions: fixedPositions
+    };
+  } catch (error) {
+    console.error('=== AI LAYOUT ERROR ===');
+    console.error('Error type:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Stack trace:', error.stack);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+
 export const handler = async (event) => {
   try {
     // Handle both API Gateway REST API and direct invocation formats
@@ -455,6 +811,21 @@ export const handler = async (event) => {
           'Access-Control-Allow-Origin': '*',
         },
         body: JSON.stringify({ success: true, ...result })
+      };
+    }
+    
+    // POST /relationships/ai-layout - Generate AI-optimized layout
+    if (method === 'POST' && pathParts.length === 2 && pathParts[1] === 'ai-layout') {
+      const body = JSON.parse(event.body || '{}');
+      const result = await generateAILayout(body);
+      
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify(result)
       };
     }
     

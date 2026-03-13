@@ -98,6 +98,28 @@ async function storeInVectorDB(s3Key, text, embedding, metadata) {
   }
 }
 
+// Extract facts from document (async, don't wait for completion)
+async function extractFactsAsync(documentId) {
+  try {
+    console.log(`Triggering fact extraction for document ${documentId}`);
+    
+    const command = new InvokeCommand({
+      FunctionName: process.env.FACT_EXTRACTION_FUNCTION || 'lazarus-fact-extraction',
+      InvocationType: 'Event', // Async invocation
+      Payload: JSON.stringify({
+        path: `/facts/extract/${documentId}`,
+        httpMethod: 'POST'
+      })
+    });
+    
+    await lambda.send(command);
+    console.log('Fact extraction triggered successfully');
+  } catch (error) {
+    console.error('Failed to trigger fact extraction:', error);
+    // Don't throw - fact extraction is optional
+  }
+}
+
 // Process a single document
 async function processDocument(filename, fileBuffer, metadata) {
   const documentId = crypto.randomUUID();
@@ -139,10 +161,17 @@ async function processDocument(filename, fileBuffer, metadata) {
   
   console.log(`Stored in vector database`);
   
+  const finalDocumentId = storeResult.responseBody?.['application/json']?.body ? 
+    JSON.parse(storeResult.responseBody['application/json'].body).document_id : 
+    documentId;
+  
+  // Trigger fact extraction asynchronously (don't wait for it)
+  extractFactsAsync(finalDocumentId).catch(err => {
+    console.error('Fact extraction trigger failed:', err);
+  });
+  
   return {
-    documentId: storeResult.responseBody?.['application/json']?.body ? 
-      JSON.parse(storeResult.responseBody['application/json'].body).document_id : 
-      documentId,
+    documentId: finalDocumentId,
     filename,
     s3Uri,
     textLength: text.length,

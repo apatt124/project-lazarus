@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Theme } from '../lib/themes';
 import DocumentUpload from './DocumentUpload';
 import UserFactsPanel from './UserFactsPanel';
@@ -28,6 +29,7 @@ interface Message {
 interface ChatInterfaceProps {
   theme: Theme;
   onMenuClick: () => void;
+  onCloseSidebar: () => void;
   conversationId?: string;
   onConversationChange: (conversationId: string, title: string) => void;
   onNewConversation: () => void;
@@ -36,11 +38,13 @@ interface ChatInterfaceProps {
 
 export default function ChatInterface({ 
   theme, 
-  onMenuClick, 
+  onMenuClick,
+  onCloseSidebar,
   conversationId: externalConversationId,
   onConversationChange,
   onNewConversation
 }: ChatInterfaceProps) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +53,7 @@ export default function ChatInterface({
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const [conversationId, setConversationId] = useState<string | undefined>(externalConversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -136,7 +141,18 @@ export default function ChatInterface({
     setMessages([]);
     setConversationId(undefined);
     setInput('');
+    setShowProfile(false);
     onNewConversation();
+    onCloseSidebar();
+    // Focus input after state updates
+    setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  const handleLogoClick = () => {
+    // Navigate to main app view and reset state
+    setShowProfile(false);
+    handleNewChat();
+    navigate('/app');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -239,37 +255,35 @@ export default function ChatInterface({
       {/* Header - Always visible */}
       <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
         <div className="flex items-center gap-3">
-          {showProfile ? (
-            <button
-              onClick={() => setShowProfile(false)}
-              className="p-2 rounded-lg hover:bg-white/10 transition-all"
-              style={{ color: theme.colors.textSecondary }}
-              title="Back to chat"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={onMenuClick}
-              className="p-2 rounded-lg hover:bg-white/10 transition-all"
-              style={{ color: theme.colors.text }}
-              title="Toggle sidebar"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          )}
-          <img 
-            src="/logo.svg" 
-            alt="Project Lazarus" 
-            className="w-8 h-8"
-          />
-          <h1 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
-            {showProfile ? 'Your Medical Profile' : 'Project Lazarus'}
-          </h1>
+          <button
+            onClick={onMenuClick}
+            className="p-2 rounded-lg hover:bg-white/10 transition-all"
+            style={{ color: theme.colors.text }}
+            title="Toggle sidebar"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <button
+            onClick={handleLogoClick}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            title="Go to main view"
+          >
+            <img 
+              src="/logo.svg" 
+              alt="Project Lazarus" 
+              className="w-8 h-8"
+            />
+            <h1 className="text-xl font-semibold flex items-center gap-2" style={{ color: theme.colors.text }}>
+              <span>Project Lazarus</span>
+              {showProfile && (
+                <span style={{ color: theme.colors.textSecondary, opacity: 0.7 }}>
+                  - Your Medical Profile
+                </span>
+              )}
+            </h1>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -532,6 +546,7 @@ export default function ChatInterface({
                 </svg>
               </button>
               <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask about your medical history..."

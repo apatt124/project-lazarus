@@ -411,6 +411,74 @@ Use tables for structured comparisons:
 
 ## File Organization
 
+### 🚨 CRITICAL RULE: Documentation Location
+
+**ALL documentation files (`.md` files) MUST be placed in the `docs/` folder, NOT in the root directory.**
+
+### Correct Repository Structure
+
+```
+repo/
+├── README.md                    # ✅ ONLY exception - repository overview
+├── CONTRIBUTING.md              # ✅ ONLY exception - contribution guidelines  
+├── CHANGELOG.md                 # ✅ ONLY exception - version history
+├── LICENSE.md                   # ✅ ONLY exception - license information
+├── docs/                        # ✅ ALL other documentation goes here
+│   ├── README.md                # Documentation index
+│   ├── guides/                  # How-to guides and tutorials
+│   │   ├── QUICK_START.md
+│   │   ├── DEPLOYMENT_GUIDE.md
+│   │   └── INTEGRATION_GUIDE.md
+│   ├── technical/               # Technical specifications
+│   │   ├── ARCHITECTURE.md
+│   │   └── API_REFERENCE.md
+│   ├── analysis/                # Analysis and audit documents
+│   │   └── SECURITY_AUDIT.md
+│   └── implementation-history/  # Implementation notes
+│       └── FEATURE_IMPLEMENTATION.md
+├── .github/
+│   ├── copilot-instructions.md
+│   └── kiro-documentation-standards.md
+└── src/                         # Source code
+```
+
+### ❌ NEVER Place Documentation Here
+
+```
+repo/
+├── SOME_FEATURE_GUIDE.md        # ❌ WRONG - Goes in docs/guides/
+├── DEPLOYMENT_NOTES.md          # ❌ WRONG - Goes in docs/guides/
+├── IMPLEMENTATION_SUMMARY.md    # ❌ WRONG - Goes in docs/implementation-history/
+├── DEBUG_GUIDE.md               # ❌ WRONG - Goes in docs/guides/
+├── TROUBLESHOOTING.md           # ❌ WRONG - Goes in docs/guides/
+└── AUDIT_REPORT.md              # ❌ WRONG - Goes in docs/analysis/
+```
+
+### Documentation Folder Structure
+
+```
+docs/
+├── README.md                    # Index of all documentation
+├── guides/                      # User-facing guides
+│   ├── QUICK_START.md
+│   ├── DEPLOYMENT_GUIDE.md
+│   ├── INTEGRATION_GUIDE.md
+│   ├── TROUBLESHOOTING.md
+│   └── USER_MANUAL.md
+├── technical/                   # Technical documentation
+│   ├── ARCHITECTURE.md
+│   ├── API_REFERENCE.md
+│   ├── DATABASE_SCHEMA.md
+│   └── SECURITY.md
+├── analysis/                    # Analysis and audits
+│   ├── PERFORMANCE_AUDIT.md
+│   ├── SECURITY_AUDIT.md
+│   └── CODE_REVIEW.md
+└── implementation-history/      # Historical records
+    ├── 2026-03-FEATURE_X.md
+    └── 2026-02-MIGRATION.md
+```
+
 ### Repository Root
 ```
 repo/

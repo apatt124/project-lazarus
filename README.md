@@ -8,47 +8,55 @@ Project Lazarus is a conversational AI assistant for managing personal medical r
 
 ### Key Features
 
-- 🤖 **Conversational AI** - Natural language chat powered by Claude (Anthropic)
+- 🤖 **Conversational AI** - Natural language chat powered by Claude Sonnet 4 (Anthropic)
 - 📄 **Universal File Support** - Upload PDFs, images, screenshots with automatic OCR
 - 🔍 **Semantic Search** - Find information by meaning, not just keywords
+- 🧠 **Knowledge Graph** - Interactive visualization of medical facts and relationships
+- 🔬 **Automatic Fact Extraction** - AI extracts structured medical facts from documents
+- 💬 **Conversation Memory** - Persistent chat history across sessions
 - 🔒 **Private & Secure** - Your data stays in your own AWS account
 - 💰 **Cost-Effective** - ~$15-20/month for complete infrastructure
-- 🎨 **Modern UI** - Clean, Gemini-inspired interface with dark mode
+- 🎨 **Modern UI** - Clean, responsive interface with 8 color themes
 
 ## Architecture
 
 ```
 ┌─────────────────┐
-│   Next.js UI    │  React frontend with Tailwind CSS
+│   Vite + React  │  Modern frontend with Tailwind CSS
 └────────┬────────┘
          │
 ┌────────▼────────┐
-│  AWS Lambda     │  Vector search & document storage
-│  + PostgreSQL   │  RDS with pgvector extension
+│  API Gateway    │  RESTful API with authentication
 └────────┬────────┘
          │
 ┌────────▼────────┐
-│  AWS Bedrock    │  Claude AI + Titan embeddings
+│  AWS Lambda     │  Serverless functions (Node.js)
+│  + PostgreSQL   │  RDS with pgvector + knowledge graph
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  AWS Bedrock    │  Claude Sonnet 4 + Titan embeddings
 │  + S3 Storage   │  Encrypted document storage
+│  + Textract     │  OCR for scanned documents
 └─────────────────┘
 ```
 
 ### Technology Stack
 
 **Frontend:**
-- Next.js 14 (App Router)
-- React 18
-- Tailwind CSS
+- Vite + React 18
 - TypeScript
+- Tailwind CSS
+- D3.js (knowledge graph visualization)
 
 **Backend:**
-- AWS Lambda (Python 3.12)
+- AWS Lambda (Node.js 20.x)
 - PostgreSQL 15 with pgvector
 - AWS S3 (encrypted storage)
 
 **AI/ML:**
-- Claude 3 Haiku (Anthropic via AWS Bedrock)
-- Amazon Bedrock Titan (embeddings)
+- Claude Sonnet 4 (Anthropic via AWS Bedrock)
+- Amazon Bedrock Titan V2 (embeddings)
 - AWS Textract (OCR)
 
 ## Features
@@ -56,32 +64,69 @@ Project Lazarus is a conversational AI assistant for managing personal medical r
 ### 1. Conversational AI Chat
 
 Ask questions in natural language:
-- "What's my blood pressure?"
+- "What's my blood pressure trend?"
 - "Summarize my medical history"
 - "What were my MRI results?"
-- "How do you work?" (self-aware!)
+- "Show me all my medications"
+- "When was my last checkup?"
 
-### 2. Universal File Upload
+The AI maintains conversation context and cites sources with similarity scores.
+
+### 2. Knowledge Graph Visualization
+
+Interactive graph showing relationships between:
+- Medical conditions and symptoms
+- Medications and what they treat
+- Test results and diagnoses
+- Providers and conditions they manage
+- Allergies and contraindications
+
+Features:
+- Force-directed layout with collision detection
+- Zoom and pan controls
+- Node filtering by type
+- Relationship highlighting
+- Export as PNG
+
+### 3. Automatic Fact Extraction
+
+When you upload documents, the AI automatically extracts:
+- **Medical conditions**: Diagnoses, chronic conditions
+- **Symptoms**: Reported complaints
+- **Medications**: Drugs, dosages, frequencies
+- **Allergies**: Adverse reactions
+- **Procedures**: Surgeries, treatments
+- **Test results**: Lab values, imaging findings
+- **Family history**: Hereditary conditions
+- **Lifestyle**: Diet, exercise, habits
+- **Providers**: Doctor information
+
+Facts are stored in a structured database and linked in the knowledge graph.
+
+### 4. Universal File Upload
 
 Supports any medical document format:
 - PDFs (machine-readable and scanned)
 - Images (PNG, JPG, screenshots)
+- Batch upload via ZIP files
 - Automatic text extraction with OCR
 - AI-powered metadata detection
 
-### 3. Semantic Search
+### 5. Semantic Search
 
 Find information by meaning:
 - Vector embeddings (1024 dimensions)
 - Similarity-based retrieval
 - Context-aware results
+- Configurable similarity thresholds
 
-### 4. Smart Features
+### 6. Conversation History
 
-- **Duplicate Detection** - SHA-256 content hashing
-- **Auto-metadata Extraction** - AI detects provider, date, type
-- **Multi-theme Support** - 8 color themes including dark mode
-- **Mobile-Friendly** - Responsive design
+- Persistent chat sessions
+- Create multiple conversations
+- Switch between conversations
+- Rename and delete conversations
+- Full message history
 
 ## Getting Started
 
@@ -113,14 +158,13 @@ Or follow these steps:
 
 3. **Install and start frontend**
    ```bash
-   cd frontend
    npm install
    npm run dev
    ```
 
 4. **Open in browser**
    ```
-   http://localhost:3737
+   http://localhost:5173
    ```
 
 For detailed instructions, see:
@@ -147,23 +191,23 @@ For detailed instructions, see:
 ### Helper Scripts
 
 ```bash
-# Test AI access
-./scripts/test-bedrock.sh
-
-# Test vector search
-./scripts/test-search.sh "blood pressure"
-
-# Test chat
+# Test chat endpoint
 ./scripts/test-chat.sh "What's in my records?"
+
+# Extract facts from documents
+node scripts/extract-facts-from-documents.js
+
+# Test fact extraction
+./scripts/test-fact-extraction.sh
 
 # Database queries
 ./scripts/db-query.sh count
 
 # View logs
-./scripts/logs.sh
+./scripts/logs.sh api-chat
 
-# Check costs
-./scripts/check-costs.sh
+# Deploy Lambda functions
+./scripts/deploy-lambda.sh api-chat
 ```
 
 ## Cost Breakdown
@@ -206,16 +250,30 @@ Per-document costs:
 
 ```
 project-lazarus/
-├── frontend/              # Next.js application
-│   ├── app/              # App router pages
+├── src/                  # React application
 │   ├── components/       # React components
-│   └── lib/              # Utilities
-├── lambda/               # AWS Lambda functions
-│   ├── vector-search/    # Search & storage
-│   └── db-init/          # Database initialization
-├── infrastructure/       # AWS setup guides
-├── scripts/             # Helper scripts
-└── docs/                # Documentation
+│   │   ├── graph/       # Knowledge graph components
+│   │   ├── Chat.tsx     # Main chat interface
+│   │   ├── Sidebar.tsx  # Navigation sidebar
+│   │   └── Upload.tsx   # Document upload
+│   ├── lib/             # Utilities and API
+│   └── App.tsx          # Main app component
+├── lambda/              # AWS Lambda functions
+│   ├── api-chat/        # Chat endpoint
+│   ├── api-upload/      # Document upload
+│   ├── api-analyze/     # Document analysis
+│   ├── api-conversations/ # Conversation management
+│   ├── api-fact-extraction/ # Fact extraction
+│   └── api-relationships/   # Knowledge graph
+├── infrastructure/      # AWS setup guides
+├── scripts/            # Helper scripts
+└── docs/               # Documentation
+    ├── architecture/   # System design
+    ├── deployment/     # Deployment guides
+    ├── features/       # Feature documentation
+    ├── guides/         # User guides
+    ├── security/       # Security docs
+    └── testing/        # Testing procedures
 ```
 
 ### Testing
