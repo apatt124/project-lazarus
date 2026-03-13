@@ -201,7 +201,7 @@ const GraphControls: React.FC<GraphControlsProps> = ({
             border: `1px solid rgba(150, 150, 150, 0.2)`,
             borderTopRightRadius: '12px',
             borderBottomRightRadius: '12px',
-            zIndex: 2147483647
+            zIndex: 40
           }}
           title="Open graph controls"
         >
