@@ -318,7 +318,7 @@ export function calculateIterativeRefinementLayout(
     }
   });
   
-  console.log(`Pass 3: Found ${remainingConnected.size} remaining connected nodes`);
+  console.log(`Pass 3: Found ${remainingConnected.length} remaining connected nodes`);
   
   // Position remaining connected nodes near their neighbors
   const remainingPositions = positionNeighbors(
