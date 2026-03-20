@@ -99,7 +99,9 @@ function AppContent() {
 export default function AppPage() {
   return (
     <NavigationProvider>
-      <AppContent />
+      <div className="h-full">
+        <AppContent />
+      </div>
     </NavigationProvider>
   );
 }
