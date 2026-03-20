@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Theme } from '../lib/themes';
+import { useNavigation } from '../contexts/NavigationContext';
 import DocumentUpload from './DocumentUpload';
 import UserFactsPanel from './UserFactsPanel';
 import ReactMarkdown from 'react-markdown';
@@ -55,6 +56,8 @@ export default function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const { isMobile, setView } = useNavigation();
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -104,6 +107,10 @@ export default function ChatInterface({
   useEffect(() => {
     if (externalConversationId && externalConversationId !== conversationId) {
       loadConversation(externalConversationId);
+    } else if (!externalConversationId && conversationId) {
+      // Handle new chat - clear messages when external ID becomes undefined
+      setMessages([]);
+      setConversationId(undefined);
     }
   }, [externalConversationId]);
 
@@ -252,64 +259,78 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header - Always visible */}
-      <header className="flex items-center justify-between p-4 border-b" style={{ borderColor: theme.colors.border }}>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onMenuClick}
-            className="p-2 rounded-lg hover:bg-white/10 transition-all"
-            style={{ color: theme.colors.text }}
-            title="Toggle sidebar"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <button
-            onClick={handleLogoClick}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            title="Go to main view"
-          >
-            <img 
-              src="/logo.svg" 
-              alt="Project Lazarus" 
-              className="w-8 h-8"
-            />
-            <h1 className="text-xl font-semibold flex items-center gap-2" style={{ color: theme.colors.text }}>
-              <span>Project Lazarus</span>
-              {showProfile && (
-                <span style={{ color: theme.colors.textSecondary, opacity: 0.7 }}>
-                  - Your Medical Profile
-                </span>
-              )}
-            </h1>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowProfile(!showProfile)}
-            className="p-2 rounded-lg transition-all hover:bg-white/10"
-            style={{ color: showProfile ? theme.colors.primary : theme.colors.textSecondary }}
-            title="View your medical profile"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </button>
-          {!showProfile && showNewChatButton && (
+      {/* Header - Only show on desktop (mobile uses bottom nav) */}
+      {!isMobile && (
+        <header className="flex p-4 border-b" style={{ borderColor: theme.colors.border }}>
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3">
             <button
-              onClick={handleNewChat}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
-              style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}
+              onClick={onMenuClick}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+              style={{ color: theme.colors.text }}
+              title="Toggle sidebar"
             >
-              New Chat
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
-          )}
-          <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}>
-            HIPAA Compliant
-          </span>
+            <button
+              onClick={handleLogoClick}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              title="Go to main view"
+            >
+              <img 
+                src="/logo.svg" 
+                alt="Project Lazarus" 
+                className="w-8 h-8"
+              />
+              <h1 className="text-xl font-semibold flex items-center gap-2" style={{ color: theme.colors.text }}>
+                <span>Project Lazarus</span>
+                {showProfile && (
+                  <span style={{ color: theme.colors.textSecondary, opacity: 0.7 }}>
+                    - Your Medical Profile
+                  </span>
+                )}
+              </h1>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setView('graph')}
+              className="p-2 rounded-lg transition-all hover:bg-white/10"
+              style={{ color: theme.colors.textSecondary }}
+              title="View Knowledge Graph"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowProfile(!showProfile)}
+              className="p-2 rounded-lg transition-all hover:bg-white/10"
+              style={{ color: showProfile ? theme.colors.primary : theme.colors.textSecondary }}
+              title="View your medical profile"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </button>
+            {!showProfile && showNewChatButton && (
+              <button
+                onClick={handleNewChat}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
+                style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}
+              >
+                New Chat
+              </button>
+            )}
+            <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: theme.colors.primary + '20', color: theme.colors.primary }}>
+              HIPAA Compliant
+            </span>
+          </div>
         </div>
       </header>
+      )}
 
       {showProfile ? (
         <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
@@ -318,19 +339,19 @@ export default function ChatInterface({
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 py-12">
-            <div className="max-w-2xl w-full space-y-8 animate-slide-in">
-              {/* Welcome Message */}
-              <div className="text-center space-y-4">
-                <div className="inline-flex items-center gap-2 text-sm" style={{ color: theme.colors.textSecondary }}>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9 2a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V6.414A2 2 0 0016.414 5L14 2.586A2 2 0 0012.586 2H9z" />
-                  </svg>
-                  <span>Hi there</span>
+          <div className="flex flex-col items-center justify-center h-full px-4 py-8">
+            <div className="max-w-2xl w-full space-y-6 animate-slide-in">
+              {/* Welcome Message with Logo */}
+              <div className="text-center space-y-6 mt-8">
+                <img 
+                  src="/logo.svg" 
+                  alt="Project Lazarus" 
+                  className="mx-auto"
+                  style={{ width: '128px', height: '128px' }}
+                />
+                <div className="text-sm" style={{ color: theme.colors.textSecondary }}>
+                  Hi there
                 </div>
-                <h2 className="text-4xl md:text-5xl font-normal" style={{ color: theme.colors.text }}>
-                  Where should we start?
-                </h2>
               </div>
 
               {/* Quick Actions */}
@@ -354,7 +375,7 @@ export default function ChatInterface({
             </div>
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+          <div className="max-w-3xl mx-auto px-4 py-8 pb-24 lg:pb-8 space-y-6">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -530,7 +551,7 @@ export default function ChatInterface({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 md:p-6">
+      <div className="p-4 md:p-6 pb-20 lg:pb-4">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="relative">
             <div className="flex items-end gap-2 p-2 rounded-3xl" style={{ backgroundColor: theme.colors.surface, border: `1px solid ${theme.colors.border}` }}>
@@ -577,9 +598,6 @@ export default function ChatInterface({
                 </svg>
               </button>
             </div>
-            <p className="text-xs text-center mt-2" style={{ color: theme.colors.textSecondary }}>
-              Project Lazarus can make mistakes. Verify important information.
-            </p>
           </form>
         </div>
       </div>

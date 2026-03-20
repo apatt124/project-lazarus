@@ -8,6 +8,14 @@ const bedrock = new BedrockRuntimeClient({ region: process.env.AWS_REGION || 'us
 
 let dbPool = null;
 
+// Standard CORS headers for all responses
+const CORS_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+};
+
 async function getDbCredentials() {
   const command = new GetSecretValueCommand({
     SecretId: 'lazarus-db-credentials',
@@ -339,33 +347,76 @@ Date: ${f.fact_date || 'unknown'}
 ---`
   ).join('\n');
   
-  const prompt = `Analyze these medical facts and identify relationships between them.
+  const prompt = `Analyze these medical facts and identify clinically meaningful relationships between them.
 
 FACTS LIST:
 ${factsText}
 
-CRITICAL INSTRUCTIONS:
+CRITICAL UUID INSTRUCTIONS:
 1. You MUST use the full UUID for source_fact_id and target_fact_id
 2. The UUID is the long string like "a1b2c3d4-5678-90ab-cdef-1234567890ab"
 3. DO NOT use any other identifier - only the UUID shown above
 4. DO NOT use index numbers, content snippets, or anything else
 
-RELATIONSHIP TYPES:
-- treats: medication treats condition
-- causes: condition causes symptom
-- contraindicates: allergy contraindicates medication
-- related_to: general relationship
-- monitors: medication monitors condition
-- requires: condition requires medication
-- prescribed_by: medication prescribed by provider
-- managed_by: condition managed by provider
+RELATIONSHIP TYPES (use the MOST SPECIFIC type that applies):
 
-CONFIDENCE SCALE (include relationships >= 0.3):
-- 0.9-1.0: Very confident (explicit, clear connection)
-- 0.7-0.9: Confident (strong evidence)
-- 0.5-0.7: Moderately confident (reasonable inference)
-- 0.3-0.5: Uncertain (possible connection)
-- 0.1-0.3: Speculative (weak evidence)
+**Treatment Relationships:**
+- treats: medication/procedure treats condition (e.g., "Metformin treats Type 2 Diabetes")
+- prevents: medication/procedure prevents condition (e.g., "Aspirin prevents heart attack")
+- manages: ongoing treatment for chronic condition (e.g., "Insulin manages Type 1 Diabetes")
+
+**Diagnostic Relationships:**
+- indicates: test result indicates condition (e.g., "HbA1c 8.5% indicates poor diabetes control")
+- diagnoses: test/procedure used to diagnose condition (e.g., "Colonoscopy diagnoses colon cancer")
+- monitors: test/medication monitors condition (e.g., "HbA1c monitors diabetes control")
+
+**Causal Relationships:**
+- causes: condition causes symptom/complication (e.g., "Diabetes causes neuropathy")
+- complicates: condition complicates another condition (e.g., "Pregnancy complicates diabetes management")
+- contraindicates: allergy/condition contraindicates medication (e.g., "Penicillin allergy contraindicates amoxicillin")
+
+**Care Relationships:**
+- prescribed_by: medication/procedure prescribed by provider
+- managed_by: condition managed by provider/specialist
+- performed_by: procedure performed by provider
+
+**Support Relationships:**
+- requires: condition requires treatment/monitoring (e.g., "Diabetes requires blood glucose monitoring")
+- supports: lifestyle/treatment supports condition management (e.g., "Low-carb diet supports diabetes management")
+
+**AVOID "related_to"** - Only use if no other type fits. Be specific!
+
+QUALITY RULES:
+
+1. **Prioritize Direct Clinical Relationships:**
+   - Medication → Condition it treats (HIGH PRIORITY)
+   - Condition → Symptoms it causes (HIGH PRIORITY)
+   - Test Result → Condition it indicates (HIGH PRIORITY)
+   - Allergy → Medications it contraindicates (HIGH PRIORITY)
+
+2. **Avoid Weak/Obvious Relationships:**
+   - DON'T: "Pregnancy related_to prenatal vitamins" (too obvious)
+   - DO: "Prenatal vitamins treats pregnancy" (specific)
+   - DON'T: "Vital signs related_to blood pressure medication" (vague)
+   - DO: "Metoprolol treats hypertension" (specific)
+
+3. **Consider Temporal Context:**
+   - If dates show condition before medication, likely "treats"
+   - If dates show medication before symptom, might be side effect
+   - Use dates to infer causality direction
+
+4. **Strength Guidelines:**
+   - 0.95-1.0: Standard medical treatment (e.g., insulin for diabetes)
+   - 0.85-0.95: Well-established relationship (e.g., diabetes causes neuropathy)
+   - 0.70-0.85: Reasonable clinical inference (e.g., metformin for PCOS)
+   - 0.50-0.70: Possible but uncertain (e.g., stress causes headache)
+   - Below 0.50: Don't create (too speculative)
+
+5. **Reasoning Quality:**
+   - Be specific about WHY the relationship exists
+   - Include mechanism if relevant (e.g., "Metformin reduces hepatic glucose production")
+   - Mention if it's first-line, standard, or alternative treatment
+   - Note if relationship is bidirectional
 
 RESPONSE FORMAT (JSON array only):
 [
@@ -374,7 +425,7 @@ RESPONSE FORMAT (JSON array only):
     "target_fact_id": "full-uuid-here",
     "relationship_type": "treats",
     "strength": 0.95,
-    "reasoning": "Brief explanation"
+    "reasoning": "Specific explanation of clinical relationship"
   }
 ]
 
@@ -382,11 +433,13 @@ EXAMPLE (using actual UUIDs from the list):
 If you see:
 UUID: 12345678-1234-1234-1234-123456789abc
 Type: medication
-Content: Metformin 500mg
+Content: Metformin 500mg twice daily
+Date: 2024-03-15
 
 UUID: 87654321-4321-4321-4321-cba987654321
 Type: medical_condition
-Content: Type 2 Diabetes
+Content: Type 2 Diabetes Mellitus
+Date: 2024-01-10
 
 Then respond:
 [
@@ -395,11 +448,11 @@ Then respond:
     "target_fact_id": "87654321-4321-4321-4321-cba987654321",
     "relationship_type": "treats",
     "strength": 0.95,
-    "reasoning": "Metformin is first-line treatment for Type 2 Diabetes"
+    "reasoning": "Metformin is first-line pharmacotherapy for Type 2 Diabetes, reducing hepatic glucose production and improving insulin sensitivity"
   }
 ]
 
-Now analyze the facts above and return relationships as JSON.`;
+Now analyze the facts above and return ONLY clinically meaningful relationships as JSON.`;
 
   const command = new ConverseCommand({
     modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
@@ -432,9 +485,11 @@ Now analyze the facts above and return relationships as JSON.`;
   // UUID validation regex
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   
-  // Insert relationships with validation
+  // Insert relationships with validation and deduplication
   let created = 0;
   let skipped = 0;
+  let updated = 0;
+  
   for (const rel of relationships) {
     // Validate UUIDs
     if (!uuidRegex.test(rel.source_fact_id)) {
@@ -461,32 +516,65 @@ Now analyze the facts above and return relationships as JSON.`;
     }
     
     try {
-      await pool.query(`
-        INSERT INTO medical.relationships (
-          source_fact_id,
-          target_fact_id,
-          relationship_type,
-          strength,
-          reasoning,
-          is_medical
-        ) VALUES ($1, $2, $3, $4, $5, TRUE)
-        ON CONFLICT DO NOTHING
-      `, [
-        rel.source_fact_id,
-        rel.target_fact_id,
-        rel.relationship_type,
-        rel.strength,
-        rel.reasoning
-      ]);
-      created++;
+      // Check if relationship already exists
+      const existingResult = await pool.query(`
+        SELECT id, strength, occurrence_count
+        FROM medical.relationships
+        WHERE source_fact_id = $1 
+          AND target_fact_id = $2 
+          AND relationship_type = $3
+          AND is_active = TRUE
+      `, [rel.source_fact_id, rel.target_fact_id, rel.relationship_type]);
+      
+      if (existingResult.rows.length > 0) {
+        // Relationship exists - update if new strength is higher
+        const existing = existingResult.rows[0];
+        const newStrength = Math.max(existing.strength, rel.strength);
+        const newCount = (existing.occurrence_count || 1) + 1;
+        
+        await pool.query(`
+          UPDATE medical.relationships
+          SET strength = $1,
+              occurrence_count = $2,
+              reasoning = CASE 
+                WHEN $3 > strength THEN $4
+                ELSE reasoning
+              END
+          WHERE id = $5
+        `, [newStrength, newCount, rel.strength, rel.reasoning, existing.id]);
+        
+        updated++;
+        console.log(`Updated existing relationship (occurrence ${newCount}): ${rel.relationship_type}`);
+      } else {
+        // New relationship - insert it
+        await pool.query(`
+          INSERT INTO medical.relationships (
+            source_fact_id,
+            target_fact_id,
+            relationship_type,
+            strength,
+            reasoning,
+            is_medical,
+            occurrence_count
+          ) VALUES ($1, $2, $3, $4, $5, TRUE, 1)
+        `, [
+          rel.source_fact_id,
+          rel.target_fact_id,
+          rel.relationship_type,
+          rel.strength,
+          rel.reasoning
+        ]);
+        created++;
+      }
     } catch (error) {
-      console.error('Failed to create relationship:', error);
+      console.error('Failed to create/update relationship:', error);
       skipped++;
     }
   }
   
   return { 
     relationships_created: created,
+    relationships_updated: updated,
     relationships_skipped: skipped,
     total_analyzed: relationships.length,
     facts_processed: allFacts.length,
@@ -627,6 +715,7 @@ async function generateAILayout(graphData, userId = 'default', forceRegenerate =
   console.log('Force regenerate:', forceRegenerate);
   
   // Check cache first (unless force regenerate)
+  let staleCache = null;
   if (!forceRegenerate) {
     try {
       const pool = await getDbPool();
@@ -651,9 +740,11 @@ async function generateAILayout(graphData, userId = 'default', forceRegenerate =
             cacheAge: cached.updated_at
           };
         } else {
-          console.log('=== CACHE INVALID ===');
+          console.log('=== CACHE STALE (will use as fallback if generation fails) ===');
           console.log('Cached node count:', cached.node_count, 'Current:', nodes.length);
           console.log('Cached edge count:', cached.edge_count, 'Current:', edges.length);
+          // Save stale cache as fallback
+          staleCache = cached;
         }
       } else {
         console.log('=== NO CACHE FOUND ===');
@@ -662,6 +753,22 @@ async function generateAILayout(graphData, userId = 'default', forceRegenerate =
       console.error('Error checking cache:', error);
       // Continue to generate new layout
     }
+  }
+  
+  // For very large graphs (>100 nodes), immediately return stale cache if available
+  // This avoids API Gateway timeout (29s limit) when Claude can't handle the size
+  if (nodes.length > 100 && staleCache) {
+    console.log('=== GRAPH TOO LARGE, USING STALE CACHE ===');
+    console.log('Graph has', nodes.length, 'nodes (limit: 100)');
+    console.log('Returning stale cache with', Object.keys(staleCache.layout_data).length, 'positions');
+    return {
+      success: true,
+      positions: staleCache.layout_data,
+      cached: true,
+      stale: true,
+      cacheAge: staleCache.updated_at,
+      warning: `Graph too large (${nodes.length} nodes). Using cached layout for ${staleCache.node_count} nodes. Consider filtering to show fewer nodes.`
+    };
   }
   
   // Build graph structure
@@ -842,6 +949,20 @@ Think step-by-step:
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.error('ERROR: No JSON found in response');
+      
+      // If we have stale cache, return it as fallback
+      if (staleCache) {
+        console.log('=== USING STALE CACHE AS FALLBACK (no JSON in response) ===');
+        return {
+          success: true,
+          positions: staleCache.layout_data,
+          cached: true,
+          stale: true,
+          cacheAge: staleCache.updated_at,
+          warning: `Using cached layout for ${staleCache.node_count} nodes (current graph has ${nodes.length} nodes). Generation failed.`
+        };
+      }
+      
       return {
         success: false,
         error: 'No JSON found in Claude response'
@@ -905,6 +1026,22 @@ Think step-by-step:
     console.error('Error type:', error.name);
     console.error('Error message:', error.message);
     console.error('Stack trace:', error.stack);
+    
+    // If we have stale cache, return it as fallback
+    if (staleCache) {
+      console.log('=== USING STALE CACHE AS FALLBACK ===');
+      console.log('Stale cache has', Object.keys(staleCache.layout_data).length, 'positions');
+      console.log('Current graph has', nodes.length, 'nodes');
+      return {
+        success: true,
+        positions: staleCache.layout_data,
+        cached: true,
+        stale: true,
+        cacheAge: staleCache.updated_at,
+        warning: `Using cached layout for ${staleCache.node_count} nodes (current graph has ${nodes.length} nodes). Some nodes may not have positions.`
+      };
+    }
+    
     return {
       success: false,
       error: error.message
@@ -912,9 +1049,112 @@ Think step-by-step:
   }
 }
 
+// Get database statistics
+async function getDatabaseStats() {
+  const pool = await getDbPool();
+
+  // Get document counts
+  const docStats = await pool.query(`
+    SELECT
+      COUNT(*) as total_documents,
+      COUNT(DISTINCT REGEXP_REPLACE(s3_key, '#chunk[0-9]+$', '')) as unique_files,
+      COUNT(*) FILTER (WHERE content_text IS NOT NULL) as documents_with_text
+    FROM medical.documents
+  `);
+
+  // Get fact counts
+  const factStats = await pool.query(`
+    SELECT
+      COUNT(*) as total_facts,
+      COUNT(*) FILTER (WHERE fact_date IS NOT NULL) as facts_with_dates,
+      COUNT(DISTINCT source_document_id) as documents_with_facts
+    FROM medical.user_facts
+    WHERE is_active = TRUE
+  `);
+
+  // Get occurrence counts
+  const occurrenceStats = await pool.query(`
+    SELECT
+      COUNT(*) as total_occurrences,
+      COUNT(DISTINCT fact_id) as facts_with_occurrences
+    FROM medical.fact_occurrences
+  `);
+
+  // Get relationship counts
+  const relStats = await pool.query(`
+    SELECT
+      COUNT(*) as total_relationships,
+      COUNT(DISTINCT source_fact_id) as facts_with_relationships
+    FROM medical.relationships
+    WHERE is_active = TRUE
+  `);
+
+  // Get documents needing extraction
+  const needsExtraction = await pool.query(`
+    SELECT
+      COUNT(DISTINCT d.id) as documents_needing_extraction,
+      COUNT(DISTINCT REGEXP_REPLACE(d.s3_key, '#chunk[0-9]+$', '')) as unique_files_needing_extraction
+    FROM medical.documents d
+    LEFT JOIN medical.user_facts f ON f.source_document_id = d.id
+    WHERE d.content_text IS NOT NULL
+    AND d.content_text != ''
+    AND f.id IS NULL
+  `);
+
+  // Get file details
+  const fileDetails = await pool.query(`
+    SELECT
+      REGEXP_REPLACE(s3_key, '#chunk[0-9]+$', '') as base_filename,
+      COUNT(*) as chunk_count,
+      COUNT(f.id) as chunks_with_facts,
+      MIN(d.upload_date) as upload_date
+    FROM medical.documents d
+    LEFT JOIN medical.user_facts f ON f.source_document_id = d.id
+    WHERE d.content_text IS NOT NULL
+    GROUP BY REGEXP_REPLACE(s3_key, '#chunk[0-9]+$', '')
+    ORDER BY upload_date DESC
+  `);
+
+  return {
+    documents: {
+      total_chunks: parseInt(docStats.rows[0].total_documents),
+      unique_files: parseInt(docStats.rows[0].unique_files),
+      chunks_with_text: parseInt(docStats.rows[0].documents_with_text),
+      chunks_needing_extraction: parseInt(needsExtraction.rows[0].documents_needing_extraction),
+      unique_files_needing_extraction: parseInt(needsExtraction.rows[0].unique_files_needing_extraction)
+    },
+    facts: {
+      total: parseInt(factStats.rows[0].total_facts),
+      with_dates: parseInt(factStats.rows[0].facts_with_dates),
+      without_dates: parseInt(factStats.rows[0].total_facts) - parseInt(factStats.rows[0].facts_with_dates),
+      documents_processed: parseInt(factStats.rows[0].documents_with_facts),
+      with_occurrences: parseInt(occurrenceStats.rows[0].facts_with_occurrences || 0)
+    },
+    occurrences: {
+      total: parseInt(occurrenceStats.rows[0].total_occurrences || 0)
+    },
+    relationships: {
+      total: parseInt(relStats.rows[0].total_relationships),
+      facts_connected: parseInt(relStats.rows[0].facts_with_relationships)
+    },
+    files: fileDetails.rows
+  };
+}
 
 export const handler = async (event) => {
   try {
+    // Handle CORS preflight requests
+    if (event.httpMethod === 'OPTIONS' || event.requestContext?.http?.method === 'OPTIONS') {
+      return {
+        statusCode: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'Access-Control-Max-Age': '86400',
+        },
+        body: ''
+      };
+    }
+    
     // Handle async invocation for background AI layout generation
     if (event.action === 'generate-ai-layout') {
       console.log('=== ASYNC AI LAYOUT GENERATION ===');
@@ -983,10 +1223,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, relationships })
       };
     }
@@ -998,10 +1235,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, relationships })
       };
     }
@@ -1013,10 +1247,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 201,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, relationship })
       };
     }
@@ -1031,10 +1262,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, ...result })
       };
     }
@@ -1067,10 +1295,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ 
           success: true,
           batches_processed: results.length,
@@ -1090,10 +1315,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify(result)
       };
     }
@@ -1106,10 +1328,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, relationship })
       };
     }
@@ -1121,10 +1340,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true })
       };
     }
@@ -1179,10 +1395,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ 
           success: true, 
           relationships,
@@ -1197,10 +1410,7 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, events })
       };
     }
@@ -1212,20 +1422,49 @@ export const handler = async (event) => {
       
       return {
         statusCode: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: CORS_HEADERS,
         body: JSON.stringify({ success: true, facts })
+      };
+    }
+    
+    // GET /relationships/facts/:id/occurrences - Get fact with all occurrences
+    if (method === 'GET' && pathParts.length === 4 && pathParts[1] === 'facts' && pathParts[3] === 'occurrences') {
+      const factId = pathParts[2];
+      const pool = await getDbPool();
+      
+      const result = await pool.query(`
+        SELECT * FROM medical.get_fact_with_occurrences($1)
+      `, [factId]);
+      
+      if (result.rows.length === 0) {
+        return {
+          statusCode: 404,
+          headers: CORS_HEADERS,
+          body: JSON.stringify({ success: false, error: 'Fact not found' })
+        };
+      }
+      
+      return {
+        statusCode: 200,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ success: true, fact: result.rows[0] })
+      };
+    }
+    
+    // GET /relationships/stats - Get database statistics
+    if (method === 'GET' && pathParts.length === 2 && pathParts[1] === 'stats') {
+      const stats = await getDatabaseStats();
+      
+      return {
+        statusCode: 200,
+        headers: CORS_HEADERS,
+        body: JSON.stringify({ success: true, stats })
       };
     }
     
     return {
       statusCode: 404,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ success: false, error: 'Not found' })
     };
     
@@ -1233,10 +1472,7 @@ export const handler = async (event) => {
     console.error('Error:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: CORS_HEADERS,
       body: JSON.stringify({ 
         success: false, 
         error: error.message 

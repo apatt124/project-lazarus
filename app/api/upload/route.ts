@@ -27,6 +27,71 @@ function calculateHash(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
+async function extractDocumentMetadata(content: string): Promise<any> {
+  try {
+    console.log('Extracting document metadata with AI...');
+    
+    // Use first 3000 chars (usually contains header/metadata)
+    const headerText = content.substring(0, 3000);
+    
+    const command = new InvokeModelCommand({
+      modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      body: JSON.stringify({
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Extract metadata from this medical document header/beginning:
+
+${headerText}
+
+Extract ONLY the following if clearly stated (use null if not found):
+1. document_type: One of: lab_results, prescription, visit_notes, discharge_summary, imaging_report, procedure_note, referral, other
+2. document_date: ISO format YYYY-MM-DD (the date of the document/visit/test, NOT today's date)
+3. provider: Doctor/provider name with credentials (e.g., "Dr. John Smith MD")
+4. facility: Hospital/clinic name
+5. specialty: Medical specialty if mentioned (e.g., "Cardiology", "Primary Care")
+
+Return ONLY valid JSON:
+{
+  "document_type": "lab_results",
+  "document_date": "2024-03-15",
+  "provider": "Dr. John Smith MD",
+  "facility": "General Hospital",
+  "specialty": "Cardiology"
+}
+
+If a field is not found, use null. Be conservative - only extract if clearly stated.`,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const response = await bedrock.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    const aiResponse = responseBody.content[0].text;
+    
+    // Parse JSON from response
+    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const extracted = JSON.parse(jsonMatch[0]);
+      console.log('Extracted metadata:', extracted);
+      return extracted;
+    }
+    
+    return {};
+  } catch (error) {
+    console.error('Metadata extraction error:', error);
+    return {}; // Return empty object on error, don't fail upload
+  }
+}
+
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     const data = await pdf(buffer);
@@ -68,8 +133,9 @@ async function extractTextWithVision(buffer: Buffer, mimeType: string): Promise<
     
     const base64Image = buffer.toString('base64');
     
+    // Use Sonnet for better accuracy on medical documents
     const command = new InvokeModelCommand({
-      modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
+      modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
       body: JSON.stringify({
         anthropic_version: 'bedrock-2023-05-31',
         max_tokens: 4000,
@@ -87,7 +153,39 @@ async function extractTextWithVision(buffer: Buffer, mimeType: string): Promise<
               },
               {
                 type: 'text',
-                text: 'This is a medical document (lab results, prescription, visit notes, or health record). Please extract ALL text content from this image. Include:\n\n1. All visible text, numbers, and data\n2. Patient information\n3. Provider/doctor names\n4. Dates\n5. Test results, measurements, or values\n6. Medications or prescriptions\n7. Diagnoses or notes\n\nProvide a complete transcription of everything visible in the document. Format it clearly and preserve the structure.',
+                text: `This is a medical document (lab results, prescription, visit notes, discharge summary, or health record). Please extract ALL text content with high accuracy.
+
+CRITICAL EXTRACTION REQUIREMENTS:
+
+1. **Document Metadata** (extract if visible):
+   - Document type (lab results, prescription, visit notes, etc.)
+   - Document date
+   - Provider/doctor names and credentials
+   - Facility/hospital name
+   - Patient name (if visible)
+
+2. **Medical Content** (extract everything):
+   - All diagnoses and conditions
+   - All medications with dosages and frequencies
+   - All test results with values and units
+   - All procedures and treatments
+   - All vital signs and measurements
+   - All dates mentioned
+   - All provider notes and observations
+
+3. **Formatting**:
+   - Preserve structure (sections, lists, tables)
+   - Include all numbers, values, and units exactly as shown
+   - Note any handwritten text separately
+   - If text is unclear, note it as [unclear: possible text]
+
+4. **Quality**:
+   - Double-check all numbers and dates
+   - Preserve medical terminology exactly
+   - Include abbreviations as written
+   - Note any stamps, signatures, or official markings
+
+Provide a complete, accurate transcription. This is medical data - accuracy is critical.`,
               },
             ],
           },
@@ -99,7 +197,7 @@ async function extractTextWithVision(buffer: Buffer, mimeType: string): Promise<
     const responseBody = JSON.parse(new TextDecoder().decode(response.body));
     const text = responseBody.content[0].text;
 
-    console.log(`Claude Vision extracted ${text.length} characters`);
+    console.log(`Claude Vision (Sonnet) extracted ${text.length} characters`);
     return text;
   } catch (error) {
     console.error('Vision extraction error:', error);
@@ -198,6 +296,19 @@ async function processFile(
       };
     }
 
+    // Extract document metadata from content
+    const extractedMetadata = await extractDocumentMetadata(content);
+    
+    // Merge user-provided metadata with extracted metadata (user input takes precedence)
+    const finalMetadata = {
+      ...extractedMetadata,
+      ...metadata, // User input overrides extracted
+      filename: fileName,
+      uploadedAt: new Date().toISOString(),
+    };
+    
+    console.log('Final metadata:', finalMetadata);
+
     // Calculate content hash for duplicate detection
     const contentHash = calculateHash(content);
     console.log(`Content hash: ${contentHash}`);
@@ -227,26 +338,46 @@ async function processFile(
         Body: buffer,
         ContentType: fileType,
         Metadata: {
-          documentType: metadata.documentType || 'other',
-          provider: metadata.provider || '',
-          date: metadata.date || '',
+          documentType: finalMetadata.document_type || 'other',
+          provider: finalMetadata.provider || '',
+          date: finalMetadata.document_date || finalMetadata.date || '',
+          facility: finalMetadata.facility || '',
+          specialty: finalMetadata.specialty || '',
         },
       })
     );
 
     // Store in database with chunking for large documents
     const chunkSize = 10000;
+    const overlapSize = 1000; // Increased from 500 to preserve more context
     const chunks: string[] = [];
     
     if (content.length > chunkSize) {
-      const overlapSize = 500;
-      for (let i = 0; i < content.length; i += (chunkSize - overlapSize)) {
-        const chunk = content.substring(i, Math.min(i + chunkSize, content.length));
-        if (chunk.trim().length > 100) {
-          chunks.push(chunk);
+      // Smart chunking: try to split on paragraph boundaries
+      const paragraphs = content.split(/\n\n+/);
+      let currentChunk = '';
+      
+      for (const para of paragraphs) {
+        // If adding this paragraph would exceed chunk size
+        if (currentChunk.length + para.length > chunkSize && currentChunk.length > 0) {
+          // Save current chunk
+          chunks.push(currentChunk.trim());
+          
+          // Start new chunk with overlap (last 1000 chars of previous chunk)
+          const overlapText = currentChunk.slice(-overlapSize);
+          currentChunk = overlapText + '\n\n' + para;
+        } else {
+          // Add paragraph to current chunk
+          currentChunk += (currentChunk ? '\n\n' : '') + para;
         }
       }
-      console.log(`Split document into ${chunks.length} chunks`);
+      
+      // Add final chunk
+      if (currentChunk.trim().length > 100) {
+        chunks.push(currentChunk.trim());
+      }
+      
+      console.log(`Split document into ${chunks.length} chunks (smart paragraph-based splitting)`);
     } else {
       chunks.push(content);
     }
@@ -261,9 +392,7 @@ async function processFile(
         {
           name: 'metadata',
           value: JSON.stringify({
-            ...metadata,
-            filename: fileName,
-            uploadedAt: new Date().toISOString(),
+            ...finalMetadata,
             contentHash: contentHash,
             fileSize: buffer.length,
             fullContentLength: content.length,

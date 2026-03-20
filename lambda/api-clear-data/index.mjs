@@ -35,28 +35,54 @@ export const handler = async (event) => {
   try {
     const pool = await getDbPool();
     
-    // Get counts before deletion
-    const beforeCounts = {
-      facts: (await pool.query('SELECT COUNT(*) FROM medical.user_facts')).rows[0].count,
-      relationships: (await pool.query('SELECT COUNT(*) FROM medical.relationships')).rows[0].count,
-      changes: (await pool.query('SELECT COUNT(*) FROM medical.knowledge_graph_changes')).rows[0].count,
-      cache: (await pool.query('SELECT COUNT(*) FROM medical.ai_layout_cache')).rows[0].count,
-    };
+    // Parse fact IDs from event
+    const body = event.body ? JSON.parse(event.body) : event;
+    const factIds = body.factIds || [];
     
-    console.log('Before deletion:', beforeCounts);
+    if (factIds.length === 0) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+        body: JSON.stringify({
+          success: false,
+          error: 'No fact IDs provided'
+        })
+      };
+    }
     
-    // Delete in correct order (respecting foreign keys)
-    await pool.query('DELETE FROM medical.ai_layout_cache');
-    await pool.query('DELETE FROM medical.knowledge_graph_changes');
-    await pool.query('DELETE FROM medical.relationships');
-    await pool.query('DELETE FROM medical.user_facts');
+    console.log('Deleting facts:', factIds);
     
-    // Get counts after deletion
+    // Get facts to be deleted
+    const factsToDelete = await pool.query(
+      'SELECT id, fact_type, content FROM medical.user_facts WHERE id = ANY($1::uuid[])',
+      [factIds]
+    );
+    
+    console.log('Facts to delete:', factsToDelete.rows);
+    
+    // Delete relationships first (foreign key constraint)
+    const deletedRels = await pool.query(
+      'DELETE FROM medical.relationships WHERE source_fact_id = ANY($1::uuid[]) OR target_fact_id = ANY($1::uuid[]) RETURNING id',
+      [factIds]
+    );
+    
+    console.log('Deleted relationships:', deletedRels.rows.length);
+    
+    // Delete facts
+    const deletedFacts = await pool.query(
+      'DELETE FROM medical.user_facts WHERE id = ANY($1::uuid[]) RETURNING id',
+      [factIds]
+    );
+    
+    console.log('Deleted facts:', deletedFacts.rows.length);
+    
     const afterCounts = {
-      facts: (await pool.query('SELECT COUNT(*) FROM medical.user_facts')).rows[0].count,
-      relationships: (await pool.query('SELECT COUNT(*) FROM medical.relationships')).rows[0].count,
-      changes: (await pool.query('SELECT COUNT(*) FROM medical.knowledge_graph_changes')).rows[0].count,
-      cache: (await pool.query('SELECT COUNT(*) FROM medical.ai_layout_cache')).rows[0].count,
+      facts_deleted: deletedFacts.rows.length,
+      relationships_deleted: deletedRels.rows.length,
+      deleted_facts: factsToDelete.rows
     };
     
     console.log('After deletion:', afterCounts);
@@ -69,9 +95,8 @@ export const handler = async (event) => {
       },
       body: JSON.stringify({
         success: true,
-        message: 'All test data cleared successfully',
-        before: beforeCounts,
-        after: afterCounts,
+        message: 'Facts deleted successfully',
+        ...afterCounts
       }),
     };
     

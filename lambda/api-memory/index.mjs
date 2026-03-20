@@ -297,6 +297,20 @@ export const handler = async (event) => {
     
     console.log('Memory API:', method, path);
     
+    // Handle CORS preflight
+    if (method === 'OPTIONS') {
+      return {
+        statusCode: 200,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400',
+        },
+        body: ''
+      };
+    }
+    
     // POST /memory/process/:conversationId - Extract facts and memories from conversation
     if (method === 'POST' && path.includes('/process/')) {
       const conversationId = path.split('/').pop();
@@ -356,12 +370,27 @@ export const handler = async (event) => {
       };
     }
     
-    // DELETE /memory/facts/:factId - Delete a user fact
+    // DELETE /memory/facts/:factId - Soft delete a user fact
     if (method === 'DELETE' && path.includes('/facts/')) {
       const factId = path.split('/').pop();
       const pool = await getDbPool();
       
-      await pool.query('DELETE FROM medical.user_facts WHERE id = $1', [factId]);
+      // Soft delete: set is_active to false instead of hard delete
+      const result = await pool.query(
+        'UPDATE medical.user_facts SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING *',
+        [factId]
+      );
+      
+      if (result.rows.length === 0) {
+        return {
+          statusCode: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+          body: JSON.stringify({ success: false, error: 'Fact not found' })
+        };
+      }
       
       return {
         statusCode: 200,
@@ -369,7 +398,7 @@ export const handler = async (event) => {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
         },
-        body: JSON.stringify({ success: true })
+        body: JSON.stringify({ success: true, fact: result.rows[0] })
       };
     }
     
@@ -399,7 +428,7 @@ export const handler = async (event) => {
       };
     }
     
-    // GET /memory/memories - Get all memory embeddings
+    // GET /memory/memories - Get all active memory embeddings
     if (method === 'GET' && path.includes('/memories')) {
       const pool = await getDbPool();
       
@@ -408,6 +437,7 @@ export const handler = async (event) => {
           id, content, memory_type, category, relevance_score, 
           is_active, usage_count, last_used_at, created_at
         FROM medical.memory_embeddings
+        WHERE is_active = true
         ORDER BY relevance_score DESC, created_at DESC
       `);
       
@@ -425,12 +455,27 @@ export const handler = async (event) => {
       };
     }
     
-    // DELETE /memory/memories/:memoryId - Delete a memory
+    // DELETE /memory/memories/:memoryId - Soft delete a memory
     if (method === 'DELETE' && path.includes('/memories/')) {
       const memoryId = path.split('/').pop();
       const pool = await getDbPool();
       
-      await pool.query('DELETE FROM medical.memory_embeddings WHERE id = $1', [memoryId]);
+      // Soft delete: set is_active to false instead of hard delete
+      const result = await pool.query(
+        'UPDATE medical.memory_embeddings SET is_active = false WHERE id = $1 RETURNING *',
+        [memoryId]
+      );
+      
+      if (result.rows.length === 0) {
+        return {
+          statusCode: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+          body: JSON.stringify({ success: false, error: 'Memory not found' })
+        };
+      }
       
       return {
         statusCode: 200,
@@ -438,7 +483,7 @@ export const handler = async (event) => {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
         },
-        body: JSON.stringify({ success: true })
+        body: JSON.stringify({ success: true, memory: result.rows[0] })
       };
     }
     

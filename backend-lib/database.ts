@@ -216,7 +216,7 @@ export async function getUserFacts(
   factTypes?: string[],
   onlyValid: boolean = true
 ): Promise<UserFact[]> {
-  let query = `SELECT * FROM medical.user_facts WHERE 1=1`;
+  let query = `SELECT * FROM medical.user_facts WHERE is_active = true`;
   const params: any[] = [];
   let paramIndex = 1;
   

@@ -10,7 +10,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Array<{ id: string; similarity: number; content: string; tier?: number }>;
-  intent?: 'medical' | 'general' | 'research' | 'conversation';
+  intent?: 'medical' | 'general' | 'research' | 'conversation' | 'memory_command';
   confidence?: {
     overall: number;
     reasoning: string;
@@ -21,6 +21,10 @@ interface Message {
     tier3: number;
     tier4Plus: number;
   };
+  memory_command?: boolean;
+  awaiting_confirmation?: boolean;
+  command?: any;
+  matches?: any[];
 }
 
 interface ChatInterfaceProps {
@@ -36,6 +40,10 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
   const [showUpload, setShowUpload] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const [pendingCommand, setPendingCommand] = useState<{
+    command: any;
+    matches: any[];
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -70,15 +78,42 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
       onNewChat(input.substring(0, 50));
     }
     
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
     try {
+      // Check if we're responding to a pending command
+      if (pendingCommand) {
+        const lowerInput = currentInput.toLowerCase().trim();
+        
+        // Handle confirmation
+        if (lowerInput === 'yes' || lowerInput === 'confirm' || lowerInput === 'remove all' || lowerInput === 'delete all') {
+          await executeMemoryCommand(pendingCommand);
+          setPendingCommand(null);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Handle cancellation
+        if (lowerInput === 'no' || lowerInput === 'cancel' || lowerInput === 'nevermind') {
+          setPendingCommand(null);
+          const cancelMessage: Message = {
+            role: 'assistant',
+            content: 'Okay, I won\'t make any changes.',
+            intent: 'memory_command',
+          };
+          setMessages((prev) => [...prev, cancelMessage]);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          query: input,
+          query: currentInput,
           conversation_id: conversationId,
           include_memory: true,
         }),
@@ -92,13 +127,25 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
           setConversationId(data.conversation_id);
         }
 
+        // Handle memory commands
+        if (data.memory_command && data.awaiting_confirmation) {
+          setPendingCommand({
+            command: data.command,
+            matches: data.matches || [],
+          });
+        }
+
         const assistantMessage: Message = {
           role: 'assistant',
           content: data.answer,
           sources: data.sources,
-          intent: data.intent,
+          intent: data.intent || (data.memory_command ? 'memory_command' : undefined),
           confidence: data.confidence,
           source_quality: data.source_quality,
+          memory_command: data.memory_command,
+          awaiting_confirmation: data.awaiting_confirmation,
+          command: data.command,
+          matches: data.matches,
         };
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
@@ -115,11 +162,67 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
     }
   };
 
+  const executeMemoryCommand = async (pending: { command: any; matches: any[] }) => {
+    const { matches } = pending;
+    
+    try {
+      // Delete each match
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      let deletedCount = 0;
+      let errorCount = 0;
+      
+      for (const match of matches) {
+        try {
+          if (match.item_type === 'fact') {
+            const response = await fetch(`${apiUrl}/memory/facts/${match.id}`, {
+              method: 'DELETE',
+            });
+            if (response.ok) deletedCount++;
+            else errorCount++;
+          } else if (match.item_type === 'memory') {
+            const response = await fetch(`${apiUrl}/memory/memories/${match.id}`, {
+              method: 'DELETE',
+            });
+            if (response.ok) deletedCount++;
+            else errorCount++;
+          }
+        } catch (error) {
+          console.error('Error deleting item:', error);
+          errorCount++;
+        }
+      }
+      
+      // Add confirmation message
+      let confirmationText = `✓ Successfully removed ${deletedCount} item${deletedCount === 1 ? '' : 's'}.`;
+      if (errorCount > 0) {
+        confirmationText += ` (${errorCount} failed)`;
+      }
+      confirmationText += '\n\nYour knowledge graph has been updated.';
+      
+      const confirmMessage: Message = {
+        role: 'assistant',
+        content: confirmationText,
+        intent: 'memory_command',
+      };
+      setMessages((prev) => [...prev, confirmMessage]);
+      
+    } catch (error) {
+      console.error('Error executing memory command:', error);
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `Sorry, I encountered an error while removing items: ${error}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
+  };
+
   const quickActions = [
     { icon: '📄', label: 'Upload document', action: () => setShowUpload(true) },
     { icon: '🔍', label: 'Search records', action: () => setInput('Search my medical records for ') },
     { icon: '📊', label: 'View summary', action: () => setInput('Give me a summary of my medical history') },
     { icon: '💊', label: 'Medications', action: () => setInput('What medications am I currently taking?') },
+    { icon: '🧠', label: 'Show memories', action: () => setInput('Show me all my memories') },
+    { icon: '📋', label: 'Show facts', action: () => setInput('Show me all my medical facts') },
   ];
 
   return (
@@ -223,6 +326,7 @@ export default function ChatInterface({ theme, onMenuClick, onNewChat }: ChatInt
                               {message.intent === 'research' && '🔍 Research'}
                               {message.intent === 'general' && '💬 General'}
                               {message.intent === 'conversation' && '💭 Chat'}
+                              {message.intent === 'memory_command' && '🧠 Memory Command'}
                             </span>
                           )}
                           {message.confidence && (

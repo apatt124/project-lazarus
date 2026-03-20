@@ -58,10 +58,10 @@ const CustomEdge: React.FC<EdgeProps> = ({
   const label = getEdgeLabel(data?.relationshipType || '');
   const strength = data?.strength || 0.5;
   
-  // Visual strength indicators - more dramatic range for high-strength values
-  // Use exponential scaling to make differences more visible
-  const strokeWidth = 1 + Math.pow(strength, 2) * 7; // 1-8px, exponential scaling
-  const opacity = selected ? 1 : 0.3 + (strength * 0.7); // 0.3-1.0 based on strength
+  // Visual strength indicators - thicker lines for stronger connections
+  // Linear scaling from 1px (weak) to 6px (strong)
+  const strokeWidth = 1 + (strength * 5); // 1-6px based on strength
+  const opacity = selected ? 1 : 0.4 + (strength * 0.6); // 0.4-1.0 based on strength
 
   // Only show labels when zoomed in enough or when selected
   const showLabel = zoom > 0.5 || selected;

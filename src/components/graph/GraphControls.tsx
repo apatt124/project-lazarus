@@ -14,14 +14,16 @@ interface SearchResult {
   type: string;
 }
 
-export type LayoutType = 'custom' | 'ai';
+export type LayoutType = 'custom' | 'ai' | 'force-directed' | 'radial' | 'hierarchical-cluster' | 'iterative-refinement' | 'magnetic-cluster';
 
 interface GraphControlsProps {
   filters: {
     showMedical: boolean;
     showGeneral: boolean;
     relationshipTypes: string[];
+    noteTypes: string[];
     minStrength: number;
+    maxConnectionsPerNode: number;
   };
   onFilterChange: (filters: GraphControlsProps['filters']) => void;
   currentTime: Date;
@@ -36,7 +38,10 @@ interface GraphControlsProps {
   hasUnsavedChanges: boolean;
   onSaveCustomLayout: () => void;
   onRegenerateAILayout: () => void;
+  onRecalculateLayout: () => void;
   isGeneratingAILayout: boolean;
+  magneticClusterMode?: 'toggle' | 'navigate';
+  onMagneticClusterModeChange?: (mode: 'toggle' | 'navigate') => void;
   theme: Theme;
 }
 
@@ -50,6 +55,23 @@ const relationshipTypeOptions = [
   { value: 'prescribed_by', label: 'Prescribed By' },
   { value: 'managed_by', label: 'Managed By' },
   { value: 'works_at', label: 'Works At' },
+];
+
+const noteTypeOptions = [
+  { value: 'medical_condition', label: 'Medical Conditions', icon: '🏥' },
+  { value: 'medication', label: 'Medications', icon: '💊' },
+  { value: 'allergy', label: 'Allergies', icon: '⚠️' },
+  { value: 'procedure', label: 'Procedures', icon: '🔬' },
+  { value: 'test_result', label: 'Test Results', icon: '📊' },
+  { value: 'symptom', label: 'Symptoms', icon: '🤒' },
+  { value: 'vital_sign', label: 'Vital Signs', icon: '❤️' },
+  { value: 'family_history', label: 'Family History', icon: '👨‍👩‍👧‍👦' },
+  { value: 'lifestyle', label: 'Lifestyle', icon: '🏃' },
+  { value: 'preference', label: 'Preferences', icon: '⚙️' },
+  { value: 'provider', label: 'Providers', icon: '👨‍⚕️' },
+  { value: 'facility', label: 'Facilities', icon: '🏥' },
+  { value: 'insurance', label: 'Insurance', icon: '📋' },
+  { value: 'general', label: 'General', icon: '📝' },
 ];
 
 const GraphControls: React.FC<GraphControlsProps> = ({ 
@@ -67,7 +89,10 @@ const GraphControls: React.FC<GraphControlsProps> = ({
   hasUnsavedChanges,
   onSaveCustomLayout,
   onRegenerateAILayout,
+  onRecalculateLayout,
   isGeneratingAILayout,
+  magneticClusterMode = 'toggle',
+  onMagneticClusterModeChange,
   theme,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -75,9 +100,66 @@ const GraphControls: React.FC<GraphControlsProps> = ({
   const [showCategoryFilters, setShowCategoryFilters] = useState(true);
   const [showStrengthFilter, setShowStrengthFilter] = useState(true);
   const [showTypeFilters, setShowTypeFilters] = useState(false);
+  const [showNoteTypeFilters, setShowNoteTypeFilters] = useState(false);
   const [showLayoutOptions, setShowLayoutOptions] = useState(true);
+  const [showLayoutParams, setShowLayoutParams] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [searchInputFocused, setSearchInputFocused] = useState(false);
+
+  // Layout parameters (stored in localStorage)
+  const [layoutParams, setLayoutParams] = useState(() => {
+    const saved = localStorage.getItem('graphLayoutParams');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return {};
+      }
+    }
+    return {
+      'force-directed': {
+        nodeSpacing: 420,
+        edgeLength: 300,
+        repulsionStrength: 200000,
+        attractionStrength: 0.05,
+        damping: 0.88,
+        iterations: 400,
+      },
+      'radial': {
+        centerRadius: 300,
+        ringSpacing: 350,
+        nodeSpacing: 280,
+      },
+      'hierarchical-cluster': {
+        clusterSpacing: 500,
+        nodeSpacing: 200,
+        minClusterSize: 2,
+      },
+      'iterative-refinement': {
+        hubRadius: 400,
+        neighborRadius: 300,
+        isolatedRadius: 800,
+        hubThreshold: 5,
+      },
+      'magnetic-cluster': {
+        conditionSpacing: 600,
+        clusterRadius: 250,
+      },
+    };
+  });
+
+  // Save layout params to localStorage when they change
+  const updateLayoutParam = (layout: string, param: string, value: number) => {
+    const newParams = {
+      ...layoutParams,
+      [layout]: {
+        ...(layoutParams[layout] || {}),
+        [param]: value,
+      },
+    };
+    setLayoutParams(newParams);
+    localStorage.setItem('graphLayoutParams', JSON.stringify(newParams));
+  };
 
   const handleToggle = (key: 'showMedical' | 'showGeneral') => {
     onFilterChange({ ...filters, [key]: !filters[key] });
@@ -88,6 +170,21 @@ const GraphControls: React.FC<GraphControlsProps> = ({
       ? filters.relationshipTypes.filter(t => t !== type)
       : [...filters.relationshipTypes, type];
     onFilterChange({ ...filters, relationshipTypes: types });
+  };
+
+  const handleNoteTypeToggle = (type: string) => {
+    const types = filters.noteTypes.includes(type)
+      ? filters.noteTypes.filter(t => t !== type)
+      : [...filters.noteTypes, type];
+    onFilterChange({ ...filters, noteTypes: types });
+  };
+
+  const handleShowAllRelationshipTypes = () => {
+    onFilterChange({ ...filters, relationshipTypes: [] });
+  };
+
+  const handleShowAllNoteTypes = () => {
+    onFilterChange({ ...filters, noteTypes: [] });
   };
 
   const handleStrengthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,6 +266,11 @@ const GraphControls: React.FC<GraphControlsProps> = ({
 
   const layoutOptions = [
     { value: 'custom' as LayoutType, label: 'Custom', description: 'Your saved layout' },
+    { value: 'magnetic-cluster' as LayoutType, label: 'Magnetic Clusters', description: 'Drag conditions to arrange' },
+    { value: 'iterative-refinement' as LayoutType, label: 'Iterative Refinement', description: 'Hub-based progressive layout' },
+    { value: 'hierarchical-cluster' as LayoutType, label: 'Hierarchical Clusters', description: 'Groups by connectivity' },
+    { value: 'radial' as LayoutType, label: 'Radial', description: 'Hub-and-spoke layout' },
+    { value: 'force-directed' as LayoutType, label: 'Force-Directed', description: 'Physics-based layout' },
     { value: 'ai' as LayoutType, label: 'AI-Optimized', description: 'Intelligent arrangement' },
   ];
 
@@ -434,6 +536,338 @@ const GraphControls: React.FC<GraphControlsProps> = ({
             )}
           </CollapsibleSection>
 
+          {/* Layout Parameters - show for algorithmic layouts */}
+          {(layoutType === 'force-directed' || layoutType === 'radial' || layoutType === 'hierarchical-cluster' || layoutType === 'iterative-refinement' || layoutType === 'magnetic-cluster') && (
+            <CollapsibleSection title="Layout Parameters" isOpen={showLayoutParams} onToggle={() => setShowLayoutParams(!showLayoutParams)}>
+              {layoutType === 'force-directed' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Node Spacing: {layoutParams['force-directed'].nodeSpacing}
+                    </label>
+                    <input
+                      type="range"
+                      min="200"
+                      max="800"
+                      step="20"
+                      value={layoutParams['force-directed'].nodeSpacing}
+                      onChange={(e) => updateLayoutParam('force-directed', 'nodeSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Edge Length: {layoutParams['force-directed'].edgeLength}
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="600"
+                      step="20"
+                      value={layoutParams['force-directed'].edgeLength}
+                      onChange={(e) => updateLayoutParam('force-directed', 'edgeLength', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Repulsion: {(layoutParams['force-directed'].repulsionStrength / 1000).toFixed(0)}k
+                    </label>
+                    <input
+                      type="range"
+                      min="50000"
+                      max="500000"
+                      step="10000"
+                      value={layoutParams['force-directed'].repulsionStrength}
+                      onChange={(e) => updateLayoutParam('force-directed', 'repulsionStrength', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Attraction: {layoutParams['force-directed'].attractionStrength.toFixed(2)}
+                    </label>
+                    <input
+                      type="range"
+                      min="0.01"
+                      max="0.2"
+                      step="0.01"
+                      value={layoutParams['force-directed'].attractionStrength}
+                      onChange={(e) => updateLayoutParam('force-directed', 'attractionStrength', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Damping: {layoutParams['force-directed'].damping.toFixed(2)}
+                    </label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="0.99"
+                      step="0.01"
+                      value={layoutParams['force-directed'].damping}
+                      onChange={(e) => updateLayoutParam('force-directed', 'damping', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {layoutType === 'radial' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Center Radius: {layoutParams['radial'].centerRadius}
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="600"
+                      step="50"
+                      value={layoutParams['radial'].centerRadius}
+                      onChange={(e) => updateLayoutParam('radial', 'centerRadius', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Ring Spacing: {layoutParams['radial'].ringSpacing}
+                    </label>
+                    <input
+                      type="range"
+                      min="150"
+                      max="600"
+                      step="50"
+                      value={layoutParams['radial'].ringSpacing}
+                      onChange={(e) => updateLayoutParam('radial', 'ringSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Node Spacing: {layoutParams['radial'].nodeSpacing}
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="500"
+                      step="20"
+                      value={layoutParams['radial'].nodeSpacing}
+                      onChange={(e) => updateLayoutParam('radial', 'nodeSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {layoutType === 'hierarchical-cluster' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Cluster Spacing: {layoutParams['hierarchical-cluster'].clusterSpacing}
+                    </label>
+                    <input
+                      type="range"
+                      min="200"
+                      max="1000"
+                      step="50"
+                      value={layoutParams['hierarchical-cluster'].clusterSpacing}
+                      onChange={(e) => updateLayoutParam('hierarchical-cluster', 'clusterSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Node Spacing: {layoutParams['hierarchical-cluster'].nodeSpacing}
+                    </label>
+                    <input
+                      type="range"
+                      min="100"
+                      max="400"
+                      step="20"
+                      value={layoutParams['hierarchical-cluster'].nodeSpacing}
+                      onChange={(e) => updateLayoutParam('hierarchical-cluster', 'nodeSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Min Cluster Size: {layoutParams['hierarchical-cluster'].minClusterSize}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      step="1"
+                      value={layoutParams['hierarchical-cluster'].minClusterSize}
+                      onChange={(e) => updateLayoutParam('hierarchical-cluster', 'minClusterSize', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {layoutType === 'iterative-refinement' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Hub Radius: {layoutParams['iterative-refinement']?.hubRadius || 400}
+                    </label>
+                    <input
+                      type="range"
+                      min="200"
+                      max="800"
+                      step="50"
+                      value={layoutParams['iterative-refinement']?.hubRadius || 400}
+                      onChange={(e) => updateLayoutParam('iterative-refinement', 'hubRadius', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Neighbor Radius: {layoutParams['iterative-refinement']?.neighborRadius || 300}
+                    </label>
+                    <input
+                      type="range"
+                      min="150"
+                      max="600"
+                      step="50"
+                      value={layoutParams['iterative-refinement']?.neighborRadius || 300}
+                      onChange={(e) => updateLayoutParam('iterative-refinement', 'neighborRadius', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Isolated Radius: {layoutParams['iterative-refinement']?.isolatedRadius || 800}
+                    </label>
+                    <input
+                      type="range"
+                      min="400"
+                      max="1200"
+                      step="50"
+                      value={layoutParams['iterative-refinement']?.isolatedRadius || 800}
+                      onChange={(e) => updateLayoutParam('iterative-refinement', 'isolatedRadius', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Hub Threshold: {layoutParams['iterative-refinement']?.hubThreshold || 5} connections
+                    </label>
+                    <input
+                      type="range"
+                      min="2"
+                      max="20"
+                      step="1"
+                      value={layoutParams['iterative-refinement']?.hubThreshold || 5}
+                      onChange={(e) => updateLayoutParam('iterative-refinement', 'hubThreshold', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {layoutType === 'magnetic-cluster' && (
+                <div className="space-y-3">
+                  {/* Mode Toggle */}
+                  <div>
+                    <label className="text-xs block mb-2 font-medium" style={{ color: theme.colors.text }}>
+                      Interaction Mode
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onMagneticClusterModeChange?.('toggle')}
+                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          magneticClusterMode === 'toggle' ? 'ring-2' : 'opacity-60 hover:opacity-80'
+                        }`}
+                        style={{
+                          backgroundColor: magneticClusterMode === 'toggle' ? theme.colors.primary : theme.colors.surface,
+                          color: magneticClusterMode === 'toggle' ? theme.colors.background : theme.colors.text,
+                          ...(magneticClusterMode === 'toggle' && { boxShadow: `0 0 0 2px ${theme.colors.primary}` }),
+                        }}
+                      >
+                        🔄 Toggle Mode
+                      </button>
+                      <button
+                        onClick={() => onMagneticClusterModeChange?.('navigate')}
+                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                          magneticClusterMode === 'navigate' ? 'ring-2' : 'opacity-60 hover:opacity-80'
+                        }`}
+                        style={{
+                          backgroundColor: magneticClusterMode === 'navigate' ? theme.colors.primary : theme.colors.surface,
+                          color: magneticClusterMode === 'navigate' ? theme.colors.background : theme.colors.text,
+                          ...(magneticClusterMode === 'navigate' && { boxShadow: `0 0 0 2px ${theme.colors.primary}` }),
+                        }}
+                      >
+                        🧭 Navigate Mode
+                      </button>
+                    </div>
+                    <p className="text-xs mt-1 opacity-60" style={{ color: theme.colors.textSecondary }}>
+                      {magneticClusterMode === 'toggle' 
+                        ? 'Click anchors to expand/collapse clusters' 
+                        : 'Click any node to view details and navigate'}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Condition Spacing: {layoutParams['magnetic-cluster']?.conditionSpacing || 600}
+                    </label>
+                    <input
+                      type="range"
+                      min="300"
+                      max="1000"
+                      step="50"
+                      value={layoutParams['magnetic-cluster']?.conditionSpacing || 600}
+                      onChange={(e) => updateLayoutParam('magnetic-cluster', 'conditionSpacing', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs block mb-1" style={{ color: theme.colors.textSecondary }}>
+                      Cluster Radius: {layoutParams['magnetic-cluster']?.clusterRadius || 250}
+                    </label>
+                    <input
+                      type="range"
+                      min="150"
+                      max="500"
+                      step="25"
+                      value={layoutParams['magnetic-cluster']?.clusterRadius || 250}
+                      onChange={(e) => updateLayoutParam('magnetic-cluster', 'clusterRadius', Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="mt-3 p-3 rounded-lg text-xs" style={{ backgroundColor: theme.colors.primary + '10', color: theme.colors.text }}>
+                    <p className="font-medium mb-1">💡 How to use:</p>
+                    <ul className="list-disc list-inside space-y-1 opacity-80">
+                      <li>Toggle Mode: Click anchors to expand/collapse</li>
+                      <li>Navigate Mode: Click any node for details</li>
+                      <li>Drag anchors to move entire clusters</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={onRecalculateLayout}
+                className="w-full mt-3 px-4 py-2 rounded-xl font-medium transition-all hover:opacity-90"
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  color: theme.colors.background,
+                }}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>Recalculate Layout</span>
+                </div>
+              </button>
+            </CollapsibleSection>
+          )}
+
           <CollapsibleSection title="Categories" isOpen={showCategoryFilters} onToggle={() => setShowCategoryFilters(!showCategoryFilters)}>
             <label 
               className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all hover:bg-white/5"
@@ -467,7 +901,39 @@ const GraphControls: React.FC<GraphControlsProps> = ({
             />
           </CollapsibleSection>
 
+          <CollapsibleSection title={`Max Connections: ${filters.maxConnectionsPerNode === 0 ? 'Unlimited' : filters.maxConnectionsPerNode}`} isOpen={showStrengthFilter} onToggle={() => setShowStrengthFilter(!showStrengthFilter)}>
+            <input 
+              type="range" 
+              min="0" 
+              max="200" 
+              step="10" 
+              value={filters.maxConnectionsPerNode} 
+              onChange={(e) => onFilterChange({ ...filters, maxConnectionsPerNode: Number(e.target.value) })}
+              className="w-full"
+            />
+            <div className="text-xs text-center mt-2" style={{ color: theme.colors.textSecondary }}>
+              {filters.maxConnectionsPerNode === 0 ? 'No limit' : `${filters.maxConnectionsPerNode} per node`}
+            </div>
+          </CollapsibleSection>
+
           <CollapsibleSection title="Relationship Types" isOpen={showTypeFilters} onToggle={() => setShowTypeFilters(!showTypeFilters)}>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs" style={{ color: theme.colors.textSecondary }}>
+                {filters.relationshipTypes.length === 0 ? 'All types shown' : `${filters.relationshipTypes.length} selected`}
+              </span>
+              {filters.relationshipTypes.length > 0 && (
+                <button
+                  onClick={handleShowAllRelationshipTypes}
+                  className="text-xs px-2 py-1 rounded transition-all hover:opacity-80"
+                  style={{ 
+                    backgroundColor: theme.colors.primary + '20',
+                    color: theme.colors.primary
+                  }}
+                >
+                  Show All
+                </button>
+              )}
+            </div>
             <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
               {relationshipTypeOptions.map(({ value, label }) => (
                 <label 
@@ -484,6 +950,47 @@ const GraphControls: React.FC<GraphControlsProps> = ({
                     onChange={() => handleRelationshipToggle(value)} 
                     className="rounded" 
                   />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Note Types" isOpen={showNoteTypeFilters} onToggle={() => setShowNoteTypeFilters(!showNoteTypeFilters)}>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs" style={{ color: theme.colors.textSecondary }}>
+                {filters.noteTypes.length === 0 ? 'All types shown' : `${filters.noteTypes.length} selected`}
+              </span>
+              {filters.noteTypes.length > 0 && (
+                <button
+                  onClick={handleShowAllNoteTypes}
+                  className="text-xs px-2 py-1 rounded transition-all hover:opacity-80"
+                  style={{ 
+                    backgroundColor: theme.colors.primary + '20',
+                    color: theme.colors.primary
+                  }}
+                >
+                  Show All
+                </button>
+              )}
+            </div>
+            <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+              {noteTypeOptions.map(({ value, label, icon }) => (
+                <label 
+                  key={value} 
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer text-xs transition-all hover:bg-white/5"
+                  style={{ 
+                    color: theme.colors.text,
+                    backgroundColor: (filters.noteTypes.length === 0 || filters.noteTypes.includes(value)) ? theme.colors.primary + '10' : 'transparent'
+                  }}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={filters.noteTypes.length === 0 || filters.noteTypes.includes(value)} 
+                    onChange={() => handleNoteTypeToggle(value)} 
+                    className="rounded" 
+                  />
+                  <span className="text-base">{icon}</span>
                   <span>{label}</span>
                 </label>
               ))}
