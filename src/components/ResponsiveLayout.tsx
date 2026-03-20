@@ -33,10 +33,9 @@ export default function ResponsiveLayout({
 
   return (
     <div 
-      className="flex h-screen overflow-hidden" 
+      className="flex h-full overflow-hidden" 
       style={{ 
         backgroundColor: theme.colors.background,
-        paddingBottom: isMobile ? '64px' : '0'
       }}
     >
       {/* Sidebar - Desktop only or mobile when open */}
@@ -56,19 +55,29 @@ export default function ResponsiveLayout({
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
+        <div 
+          className="flex-1 overflow-hidden"
+          style={{
+            paddingBottom: isMobile ? '64px' : '0'
+          }}
+        >
           {children}
         </div>
 
         {/* Bottom Navigation - Mobile only */}
         {isMobile && (
-          <BottomNavigation
-            currentView={currentView}
-            onNavigate={setView}
-            theme={theme}
-          />
+          <div 
+            className="fixed bottom-0 left-0 right-0 z-50"
+            style={{ height: '64px' }}
+          >
+            <BottomNavigation
+              currentView={currentView}
+              onNavigate={setView}
+              theme={theme}
+            />
+          </div>
         )}
       </div>
     </div>

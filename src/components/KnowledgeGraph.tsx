@@ -89,13 +89,33 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
   const [layoutRecalcTrigger, setLayoutRecalcTrigger] = useState(0); // Increment to trigger recalc
   const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set()); // Track expanded clusters for magnetic layout
   const [clusterInfo, setClusterInfo] = useState<Map<string, any>>(new Map()); // Store cluster data for magnetic layout
-  const [magneticClusterPositions, setMagneticClusterPositions] = useState<Record<string, { x: number; y: number }>>({}); // Store user-adjusted positions for magnetic layout
+  const [magneticClusterPositions, setMagneticClusterPositions] = useState<Record<string, { x: number; y: number }>>(() => {
+    // Load saved positions from localStorage on init
+    const saved = localStorage.getItem('magneticClusterPositions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved magnetic cluster positions:', e);
+        return {};
+      }
+    }
+    return {};
+  }); // Store user-adjusted positions for magnetic layout
   const [magneticClusterOffsets, setMagneticClusterOffsets] = useState<Record<string, { dx: number; dy: number; anchorId: string }>>({}); // Store relative offsets from anchor
   const [magneticClusterMode, setMagneticClusterMode] = useState<'toggle' | 'navigate'>('toggle'); // Mode for magnetic cluster interaction
   const clusterInfoRef = React.useRef<Map<string, any>>(new Map()); // Ref to persist cluster info across renders
 
   // Use Lambda API directly (Vite app, not Next.js)
   const API_BASE = import.meta.env.VITE_API_URL;
+  
+  // Save magnetic cluster positions to localStorage whenever they change
+  useEffect(() => {
+    if (layoutType === 'magnetic-cluster' && Object.keys(magneticClusterPositions).length > 0) {
+      localStorage.setItem('magneticClusterPositions', JSON.stringify(magneticClusterPositions));
+      console.log('Saved magnetic cluster positions to localStorage:', Object.keys(magneticClusterPositions).length, 'positions');
+    }
+  }, [magneticClusterPositions, layoutType]);
 
   // Callback for magnetic cluster node clicks
   // Function to calculate optimal handles based on node positions
