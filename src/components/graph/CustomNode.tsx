@@ -31,7 +31,7 @@ const getNodeIcon = (type: string) => {
   return icons[type] || '📌';
 };
 
-const CustomNode: React.FC<NodeProps> = ({ data, selected }) => {
+const CustomNode: React.FC<NodeProps> = ({ data, selected, id }) => {
   const style = getNodeStyle(data.type);
   const icon = getNodeIcon(data.type);
   const isHighlighted = data.highlighted || false;

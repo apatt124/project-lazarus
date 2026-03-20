@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
-import ChatInterface from '../components/ChatInterface';
+import { NavigationProvider, useNavigation } from '../contexts/NavigationContext';
+import ResponsiveLayout from '../components/ResponsiveLayout';
+import ChatView from '../components/views/ChatView';
+import GraphView from '../components/views/GraphView';
+import DocumentsView from '../components/views/DocumentsView';
+import FactsView from '../components/views/FactsView';
 import { themes, defaultTheme } from '../lib/themes';
 
 interface Conversation {
@@ -13,12 +17,12 @@ interface Conversation {
   is_pinned?: boolean;
 }
 
-export default function AppPage() {
+function AppContent() {
   const [currentTheme, setCurrentTheme] = useState(defaultTheme);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // Closed by default
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | undefined>(undefined);
   const navigate = useNavigate();
+  const { currentView, toggleSidebar } = useNavigation();
 
   useEffect(() => {
     // Load theme
@@ -56,51 +60,46 @@ export default function AppPage() {
 
   const handleConversationSelect = (conversationId: string) => {
     setCurrentConversationId(conversationId);
-    setSidebarOpen(false); // Close sidebar when selecting a conversation
   };
 
-  const handleNewConversation = () => {
+  const handleNewChat = () => {
     setCurrentConversationId(undefined);
-    setSidebarOpen(false); // Close sidebar when starting new chat
-  };
-
-  const handleConversationChange = (conversationId: string, title: string) => {
-    setCurrentConversationId(conversationId);
-    // Reload conversations to update the list
-    loadConversations();
   };
 
   const theme = themes[currentTheme];
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: theme.colors.background }}>
-      {/* Sidebar */}
-      <Sidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onToggleCollapse={() => setSidebarOpen(!sidebarOpen)}
-        theme={theme}
-        currentTheme={currentTheme}
-        onThemeChange={handleThemeChange}
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        onConversationSelect={handleConversationSelect}
-        onNewChat={handleNewConversation}
-        onLogout={handleLogout}
-        onConversationUpdate={loadConversations}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <ChatInterface
-          theme={theme}
-          onMenuClick={() => setSidebarOpen(!sidebarOpen)}
-          onCloseSidebar={() => setSidebarOpen(false)}
-          conversationId={currentConversationId}
-          onConversationChange={handleConversationChange}
-          onNewConversation={handleNewConversation}
+    <ResponsiveLayout
+      theme={theme}
+      currentTheme={currentTheme}
+      onThemeChange={handleThemeChange}
+      conversations={conversations}
+      currentConversationId={currentConversationId}
+      onConversationSelect={handleConversationSelect}
+      onNewChat={handleNewChat}
+      onLogout={handleLogout}
+      onConversationUpdate={loadConversations}
+    >
+      {currentView === 'chat' && (
+        <ChatView 
+          theme={theme} 
+          onMenuClick={toggleSidebar}
+          currentConversationId={currentConversationId}
+          onConversationChange={handleConversationSelect}
+          onNewChat={handleNewChat}
         />
-      </div>
-    </div>
+      )}
+      {currentView === 'graph' && <GraphView theme={theme} />}
+      {currentView === 'documents' && <DocumentsView theme={theme} />}
+      {currentView === 'facts' && <FactsView theme={theme} />}
+    </ResponsiveLayout>
+  );
+}
+
+export default function AppPage() {
+  return (
+    <NavigationProvider>
+      <AppContent />
+    </NavigationProvider>
   );
 }

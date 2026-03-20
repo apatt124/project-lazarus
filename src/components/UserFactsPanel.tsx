@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Theme } from '../lib/themes';
 import KnowledgeGraph from './KnowledgeGraph';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 interface UserFact {
   id: string;
@@ -34,7 +35,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   const [facts, setFacts] = useState<UserFact[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('graph');
+  const [viewMode, setViewMode] = useState<ViewMode>('facts');
   
   // Memory filters and search
   const [memorySearch, setMemorySearch] = useState('');
@@ -46,6 +47,19 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   
   // Collapsible sections
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  
+  // Delete confirmation modal
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    show: boolean;
+    type: 'memory' | 'fact' | null;
+    id: string | null;
+    content: string;
+  }>({
+    show: false,
+    type: null,
+    id: null,
+    content: ''
+  });
   
   const toggleSection = (sectionId: string) => {
     setCollapsedSections(prev => {
@@ -98,13 +112,12 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   };
 
   const deleteFact = async (factId: string) => {
-    if (!confirm('Are you sure you want to delete this fact?')) return;
-    
     try {
       await fetch(`${import.meta.env.VITE_API_URL}/memory/facts/${factId}`, {
         method: 'DELETE',
       });
       setFacts(facts.filter(f => f.id !== factId));
+      setDeleteConfirmation({ show: false, type: null, id: null, content: '' });
     } catch (error) {
       console.error('Failed to delete fact:', error);
     }
@@ -133,16 +146,31 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   };
 
   const deleteMemory = async (memoryId: string) => {
-    if (!confirm('Are you sure you want to delete this memory?')) return;
-    
     try {
       await fetch(`${import.meta.env.VITE_API_URL}/memory/memories/${memoryId}`, {
         method: 'DELETE',
       });
       setMemories(memories.filter(m => m.id !== memoryId));
+      setDeleteConfirmation({ show: false, type: null, id: null, content: '' });
     } catch (error) {
       console.error('Failed to delete memory:', error);
     }
+  };
+  
+  const showDeleteConfirmation = (type: 'memory' | 'fact', id: string, content: string) => {
+    setDeleteConfirmation({ show: true, type, id, content });
+  };
+  
+  const handleDeleteConfirm = () => {
+    if (deleteConfirmation.type === 'memory' && deleteConfirmation.id) {
+      deleteMemory(deleteConfirmation.id);
+    } else if (deleteConfirmation.type === 'fact' && deleteConfirmation.id) {
+      deleteFact(deleteConfirmation.id);
+    }
+  };
+  
+  const handleDeleteCancel = () => {
+    setDeleteConfirmation({ show: false, type: null, id: null, content: '' });
   };
 
   const updateMemory = async (memoryId: string, updates: { relevance_score?: number; is_active?: boolean }) => {
@@ -263,7 +291,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full pb-16 lg:pb-0">
       {/* Tabs */}
       <div className="flex gap-1 px-4 pt-4 flex-shrink-0" style={{ borderBottom: `1px solid ${theme.colors.border}` }}>
         <button
@@ -520,7 +548,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
                                 
                                 {/* Delete Button */}
                                 <button
-                                  onClick={() => deleteFact(fact.id)}
+                                  onClick={() => showDeleteConfirmation('fact', fact.id, fact.content)}
                                   className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/20 transition-all flex-shrink-0"
                                   style={{ color: '#ef4444' }}
                                   title="Delete fact"
@@ -600,7 +628,7 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
                             </svg>
                           </button>
                           <button
-                            onClick={() => deleteMemory(memory.id)}
+                            onClick={() => showDeleteConfirmation('memory', memory.id, memory.content)}
                             className="p-2 rounded-lg hover:bg-red-500/20 transition-all"
                             style={{ color: '#ef4444' }}
                             title="Delete memory"
@@ -667,6 +695,17 @@ export default function UserFactsPanel({ theme, onClose }: UserFactsPanelProps) 
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        show={deleteConfirmation.show}
+        title={`Delete ${deleteConfirmation.type === 'memory' ? 'Memory' : 'Fact'}?`}
+        message={`This action cannot be undone. The ${deleteConfirmation.type} will be permanently removed.`}
+        itemPreview={deleteConfirmation.content}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        theme={theme}
+      />
     </div>
   );
 }

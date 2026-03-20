@@ -111,3 +111,13 @@ body {
   margin: 1rem 0;
   opacity: 0.3;
 }
+
+/* Mobile bottom navbar spacing */
+.mobile-content-with-navbar {
+  padding-bottom: 64px; /* Height of bottom navbar (h-16 = 64px) */
+}
+
+/* Ensure child elements respect the padding */
+.mobile-content-with-navbar > * {
+  max-height: 100%;
+}

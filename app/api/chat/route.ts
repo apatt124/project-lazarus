@@ -30,6 +30,7 @@ import {
   createMemory,
   searchMemories
 } from '@/lib/database';
+import { parseMemoryCommand } from '@/lib/command-parser';
 import type { ChatRequest, ChatResponse, Source } from '@/lib/types';
 
 const lambda = new LambdaClient({
@@ -54,11 +55,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Classify intent
+    // Step 1: Check for memory commands first
+    const memoryCommand = parseMemoryCommand(query);
+    
+    if (memoryCommand) {
+      console.log('Detected memory command:', memoryCommand);
+      
+      // Forward to memory command handler
+      const commandResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/memory-commands`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            query, 
+            conversation_id: conversation_id 
+          }),
+        }
+      );
+      
+      const commandData = await commandResponse.json();
+      
+      if (commandData.success && commandData.is_command) {
+        // Get or create conversation for command response
+        let conversationId = conversation_id;
+        if (!conversationId) {
+          const title = query.length > 50 ? query.substring(0, 47) + '...' : query;
+          const conversation = await createConversation(title);
+          conversationId = conversation.id;
+        }
+        
+        // Save user message
+        await createMessage({
+          conversation_id: conversationId,
+          role: 'user',
+          content: query,
+          intent: 'memory_command',
+          metadata: { command: memoryCommand },
+          model_version: 'claude-sonnet-4-20250514',
+        });
+        
+        // Save assistant response
+        await createMessage({
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: commandData.message,
+          intent: 'memory_command',
+          metadata: {
+            command: memoryCommand,
+            matches: commandData.matches,
+            awaiting_confirmation: commandData.confirmation_required,
+          },
+          model_version: 'claude-sonnet-4-20250514',
+        });
+        
+        return NextResponse.json({
+          success: true,
+          answer: commandData.message,
+          conversation_id: conversationId,
+          memory_command: true,
+          command: memoryCommand,
+          matches: commandData.matches,
+          awaiting_confirmation: commandData.confirmation_required,
+        });
+      }
+    }
+    
+    // Step 2: Classify intent (for non-command queries)
     const intentClassification = classifyIntent(query);
     console.log('Intent classification:', intentClassification);
 
-    // Step 2: Get or create conversation
+    // Step 3: Get or create conversation
     let conversationId = conversation_id;
     if (!conversationId) {
       // Create new conversation with title from first query

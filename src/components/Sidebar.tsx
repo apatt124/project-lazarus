@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Theme, themes } from '../lib/themes';
+import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 interface Conversation {
   id: string;
@@ -44,6 +45,15 @@ export default function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    show: boolean;
+    conversationId: string | null;
+    title: string;
+  }>({
+    show: false,
+    conversationId: null,
+    title: '',
+  });
   
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -98,16 +108,25 @@ export default function Sidebar({
     setEditTitle('');
   };
 
-  const handleDelete = async (conversationId: string) => {
-    if (!confirm('Are you sure you want to delete this conversation?')) return;
+  const showDeleteConfirmation = (conversationId: string, title: string) => {
+    setDeleteConfirmation({
+      show: true,
+      conversationId,
+      title,
+    });
+    setMenuOpenId(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmation.conversationId) return;
     
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/conversations/${conversationId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/conversations/${deleteConfirmation.conversationId}`, {
         method: 'DELETE',
       });
       
       if (response.ok) {
-        if (currentConversationId === conversationId) {
+        if (currentConversationId === deleteConfirmation.conversationId) {
           onNewChat();
         }
         onConversationUpdate?.();
@@ -115,7 +134,12 @@ export default function Sidebar({
     } catch (error) {
       console.error('Failed to delete conversation:', error);
     }
-    setMenuOpenId(null);
+    
+    setDeleteConfirmation({ show: false, conversationId: null, title: '' });
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmation({ show: false, conversationId: null, title: '' });
   };
 
   const startEdit = (conversation: Conversation) => {
@@ -170,7 +194,10 @@ export default function Sidebar({
             />
           ) : (
             <button
-              onClick={() => onConversationSelect(conversation.id)}
+              onClick={() => {
+                onConversationSelect(conversation.id);
+                onClose(); // Close sidebar on mobile after selection
+              }}
               className="flex-1 text-left min-w-0 overflow-hidden"
             >
               <p 
@@ -232,7 +259,7 @@ export default function Sidebar({
                       Rename
                     </button>
                     <button
-                      onClick={() => handleDelete(conversation.id)}
+                      onClick={() => showDeleteConfirmation(conversation.id, conversation.title)}
                       className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-red-500/10 transition-colors"
                       style={{ color: '#ef4444' }}
                     >
@@ -296,7 +323,10 @@ export default function Sidebar({
 
           {/* New Chat Button */}
           <button
-            onClick={onNewChat}
+            onClick={() => {
+              onNewChat();
+              onClose(); // Close sidebar on mobile after new chat
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:opacity-90"
             style={{
               backgroundColor: theme.colors.primary + '20',
@@ -428,6 +458,17 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        show={deleteConfirmation.show}
+        title="Delete Conversation?"
+        message="This action cannot be undone. The conversation will be permanently removed."
+        itemPreview={deleteConfirmation.title}
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+        theme={theme}
+      />
     </>
   );
 }

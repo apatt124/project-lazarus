@@ -18,6 +18,11 @@ import CustomEdge from './graph/CustomEdge';
 import GraphControls, { LayoutType } from './graph/GraphControls';
 import NodeDetailPanel from './graph/NodeDetailPanel';
 import { Theme } from '../lib/themes';
+import { calculateForceDirectedLayout } from '../lib/forceDirectedLayout';
+import { calculateRadialLayout } from '../lib/radialLayout';
+import { calculateHierarchicalClusterLayout } from '../lib/hierarchicalClusterLayout';
+import { calculateIterativeRefinementLayout } from '../lib/iterativeRefinementLayout';
+import { calculateMagneticClusterLayout, updateClusterPosition } from '../lib/magneticClusterLayout';
 
 const nodeTypes = {
   custom: CustomNode,
@@ -68,19 +73,31 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
     showMedical: true,
     showGeneral: true,
     relationshipTypes: [] as string[],
-    minStrength: 0,
+    noteTypes: [] as string[], // New: filter by fact types
+    minStrength: 0.7, // Increased default to reduce clutter
+    maxConnectionsPerNode: 50, // New: limit connections per node
   });
   const [isLoading, setIsLoading] = useState(true);
   const [allRelationships, setAllRelationships] = useState<Relationship[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Node[]>([]);
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
+  const [manuallyShownNodes, setManuallyShownNodes] = useState<Set<string>>(new Set()); // New: nodes shown by clicking connections
   const [layoutType, setLayoutType] = useState<LayoutType>('custom');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isGeneratingAILayout, setIsGeneratingAILayout] = useState(false);
+  const [layoutRecalcTrigger, setLayoutRecalcTrigger] = useState(0); // Increment to trigger recalc
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set()); // Track expanded clusters for magnetic layout
+  const [clusterInfo, setClusterInfo] = useState<Map<string, any>>(new Map()); // Store cluster data for magnetic layout
+  const [magneticClusterPositions, setMagneticClusterPositions] = useState<Record<string, { x: number; y: number }>>({}); // Store user-adjusted positions for magnetic layout
+  const [magneticClusterOffsets, setMagneticClusterOffsets] = useState<Record<string, { dx: number; dy: number; anchorId: string }>>({}); // Store relative offsets from anchor
+  const [magneticClusterMode, setMagneticClusterMode] = useState<'toggle' | 'navigate'>('toggle'); // Mode for magnetic cluster interaction
+  const clusterInfoRef = React.useRef<Map<string, any>>(new Map()); // Ref to persist cluster info across renders
 
+  // Use Lambda API directly (Vite app, not Next.js)
   const API_BASE = import.meta.env.VITE_API_URL;
 
+  // Callback for magnetic cluster node clicks
   // Function to calculate optimal handles based on node positions
   const calculateOptimalHandles = useCallback((sourceNode: Node, targetNode: Node) => {
     const dx = targetNode.position.x - sourceNode.position.x;
@@ -172,7 +189,124 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
   }, []);
 
   // Handle node drag end
-  const handleNodeDragStop = useCallback((_event: React.MouseEvent, _node: Node, nodes: Node[]) => {
+  const handleNodeDragStop = useCallback((_event: React.MouseEvent, draggedNode: Node, nodes: Node[]) => {
+    // If in magnetic cluster layout and dragging an anchor, update cluster positions
+    if (layoutType === 'magnetic-cluster') {
+      const cluster = clusterInfoRef.current.get(draggedNode.id);
+      if (cluster) {
+        // This is an anchor node - save its position
+        console.log(`Anchor ${draggedNode.id} dragged to (${draggedNode.position.x}, ${draggedNode.position.y})`);
+        setMagneticClusterPositions(prev => ({
+          ...prev,
+          [draggedNode.id]: draggedNode.position,
+        }));
+        
+        // If cluster is expanded, update positions of connected nodes to move with anchor
+        const isExpanded = expandedClusters.has(draggedNode.id);
+        console.log(`Cluster ${draggedNode.id} is ${isExpanded ? 'expanded' : 'collapsed'}`);
+        
+        if (isExpanded) {
+          // Load parameters for cluster radius
+          const savedParams = localStorage.getItem('graphLayoutParams');
+          let clusterRadius = 250;
+          if (savedParams) {
+            try {
+              const allParams = JSON.parse(savedParams);
+              if (allParams['magnetic-cluster']?.clusterRadius) {
+                clusterRadius = allParams['magnetic-cluster'].clusterRadius;
+              }
+            } catch (e) {
+              console.error('Failed to parse layout params:', e);
+            }
+          }
+          
+          // Calculate new positions for connected nodes based on new anchor position
+          const updatedPositions = updateClusterPosition(
+            draggedNode.id,
+            draggedNode.position,
+            cluster,
+            clusterRadius
+          );
+          
+          console.log(`Updated ${updatedPositions.size} connected node positions`);
+          
+          // Save all updated positions (anchor + connected nodes)
+          setMagneticClusterPositions(prev => {
+            const newPositions = { ...prev };
+            updatedPositions.forEach((pos, nodeId) => {
+              newPositions[nodeId] = pos;
+            });
+            return newPositions;
+          });
+          
+          // Update offsets for all connected nodes relative to new anchor position
+          setMagneticClusterOffsets(prev => {
+            const newOffsets = { ...prev };
+            updatedPositions.forEach((pos, nodeId) => {
+              newOffsets[nodeId] = {
+                dx: pos.x - draggedNode.position.x,
+                dy: pos.y - draggedNode.position.y,
+                anchorId: draggedNode.id,
+              };
+            });
+            return newOffsets;
+          });
+          
+          // Apply updated positions to visible nodes immediately
+          setNodes((currentNodes) =>
+            currentNodes.map(node => {
+              const newPos = updatedPositions.get(node.id);
+              if (newPos) {
+                return {
+                  ...node,
+                  position: { x: newPos.x, y: newPos.y },
+                };
+              }
+              return node;
+            })
+          );
+        } else {
+          console.log(`Cluster collapsed - only anchor position saved, connected node positions will be recalculated on re-expansion`);
+          // When cluster is collapsed and anchor moves, we should NOT save absolute positions for connected nodes
+          // The offsets will be applied when re-expanded
+          // Clear any saved absolute positions for connected nodes to avoid confusion
+          setMagneticClusterPositions(prev => {
+            const newPositions = { ...prev };
+            cluster.connectedNodes.forEach(nodeId => {
+              delete newPositions[nodeId];
+            });
+            return newPositions;
+          });
+        }
+        // If cluster is collapsed, don't touch offsets - they'll be applied when re-expanded
+      } else {
+        // Check if this is a connected node (has an anchor)
+        const offset = magneticClusterOffsets[draggedNode.id];
+        if (offset) {
+          // This is a connected node - update its offset relative to its anchor
+          const anchorNode = nodes.find(n => n.id === offset.anchorId);
+          if (anchorNode) {
+            const newOffset = {
+              dx: draggedNode.position.x - anchorNode.position.x,
+              dy: draggedNode.position.y - anchorNode.position.y,
+              anchorId: offset.anchorId,
+            };
+            setMagneticClusterOffsets(prev => ({
+              ...prev,
+              [draggedNode.id]: newOffset,
+            }));
+          }
+        } else {
+          // Not an anchor or connected node, just save absolute position
+          setMagneticClusterPositions(prev => ({
+            ...prev,
+            [draggedNode.id]: draggedNode.position,
+          }));
+        }
+      }
+      return; // Don't trigger other save logic for magnetic layout
+    }
+    
     if (layoutType === 'custom') {
       // In custom mode, auto-save to custom layout
       saveNodePositions(nodes, 'custom');
@@ -180,7 +314,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
       // In AI mode, mark as having unsaved changes
       setHasUnsavedChanges(true);
     }
-  }, [layoutType, saveNodePositions]);
+  }, [layoutType, saveNodePositions, setNodes, expandedClusters]);
 
   // Save current positions as custom layout
   const handleSaveCustomLayout = useCallback(() => {
@@ -351,6 +485,11 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
   // Fetch timeline events
   useEffect(() => {
     const fetchTimelineEvents = async () => {
+      if (!API_BASE) {
+        console.warn('API_BASE not configured - skipping timeline fetch');
+        return;
+      }
+      
       try {
         const response = await fetch(`${API_BASE}/relationships/timeline`);
         const data = await response.json();
@@ -358,7 +497,8 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           setTimelineEvents(data.events);
         }
       } catch (error) {
-        console.error('Failed to fetch timeline events:', error);
+        // Silently fail - CORS/Lambda issue documented in docs/fixes/LAMBDA_CORS_ISSUE.md
+        console.warn('Timeline fetch failed (CORS/Lambda issue):', error.message);
       }
     };
     fetchTimelineEvents();
@@ -367,6 +507,12 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
   // Fetch graph data
   useEffect(() => {
     const fetchGraphData = async () => {
+      if (!API_BASE) {
+        console.warn('API_BASE not configured - skipping graph fetch');
+        setIsLoading(false);
+        return;
+      }
+      
       setIsLoading(true);
       try {
         const response = await fetch(`${API_BASE}/relationships/graph?minStrength=${filters.minStrength}`);
@@ -376,7 +522,9 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           setAllRelationships(data.relationships);
         }
       } catch (error) {
-        console.error('Failed to fetch graph data:', error);
+        // Silently fail - CORS/Lambda issue documented in docs/fixes/LAMBDA_CORS_ISSUE.md
+        console.warn('Graph fetch failed (CORS/Lambda issue):', error.message);
+        setAllRelationships([]); // Set empty array to show "no data" message
       } finally {
         setIsLoading(false);
       }
@@ -407,6 +555,28 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
       return true;
     });
 
+    // Limit connections per node to prevent performance issues
+    if (filters.maxConnectionsPerNode > 0) {
+      const nodeConnectionCount = new Map<string, number>();
+      const sortedRels = [...filteredRelationships].sort((a, b) => 
+        parseFloat(b.strength.toString()) - parseFloat(a.strength.toString())
+      );
+      
+      filteredRelationships = sortedRels.filter((rel) => {
+        const sourceCount = nodeConnectionCount.get(rel.source_fact_id) || 0;
+        const targetCount = nodeConnectionCount.get(rel.target_fact_id) || 0;
+        
+        if (sourceCount >= filters.maxConnectionsPerNode && targetCount >= filters.maxConnectionsPerNode) {
+          return false; // Both nodes at limit
+        }
+        
+        // Keep this relationship and increment counts
+        nodeConnectionCount.set(rel.source_fact_id, sourceCount + 1);
+        nodeConnectionCount.set(rel.target_fact_id, targetCount + 1);
+        return true;
+      });
+    }
+
     // Build nodes from filtered relationships
     const factMap = new Map<string, any>();
     filteredRelationships.forEach((rel) => {
@@ -425,6 +595,22 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
         });
       }
     });
+
+    // Apply note type filters (but keep manually shown nodes)
+    if (filters.noteTypes.length > 0) {
+      const filteredFactMap = new Map<string, any>();
+      factMap.forEach((fact, id) => {
+        // Keep if matches filter OR is manually shown
+        if (filters.noteTypes.includes(fact.type) || manuallyShownNodes.has(id)) {
+          filteredFactMap.set(id, fact);
+        }
+      });
+      factMap.clear();
+      filteredFactMap.forEach((fact, id) => factMap.set(id, fact));
+    } else {
+      // No note type filter, but still include manually shown nodes
+      // (they're already in factMap from relationships)
+    }
 
     const savedPositions = loadNodePositions(layoutType);
 
@@ -462,6 +648,489 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
       } else {
         // All nodes positioned, skip to edges
       }
+    } else if (layoutType === 'force-directed') {
+      // Force-Directed layout: calculate positions using physics simulation
+      console.log('Calculating force-directed layout for', nodeArray.length, 'nodes');
+      
+      // Load parameters from localStorage
+      const savedParams = localStorage.getItem('graphLayoutParams');
+      let params = {
+        nodeSpacing: 420,
+        edgeLength: 300,
+        repulsionStrength: 200000,
+        attractionStrength: 0.05,
+        damping: 0.88,
+        iterations: 400,
+      };
+      
+      if (savedParams) {
+        try {
+          const allParams = JSON.parse(savedParams);
+          if (allParams['force-directed']) {
+            params = { ...params, ...allParams['force-directed'] };
+          }
+        } catch (e) {
+          console.error('Failed to parse layout params:', e);
+        }
+      }
+      
+      // Dynamic canvas sizing based on node count
+      const nodeCount = nodeArray.length;
+      const baseSize = Math.sqrt(nodeCount) * 400;
+      const minSize = 2000;
+      const maxSize = 15000;
+      const canvasWidth = Math.max(minSize, Math.min(maxSize, baseSize));
+      const canvasHeight = Math.max(minSize, Math.min(maxSize, baseSize * 0.8));
+      
+      const density = nodeCount / (canvasWidth * canvasHeight / 1000000);
+      const spacingMultiplier = density > 0.5 ? 0.8 : 1.0;
+      
+      console.log(`Canvas: ${canvasWidth}x${canvasHeight}, Density: ${density.toFixed(3)}, Nodes: ${nodeCount}`);
+      console.log('Using params:', params);
+      
+      const positions = calculateForceDirectedLayout(
+        nodeArray.map(f => ({ id: f.id })),
+        filteredRelationships.map(r => ({
+          source: r.source_fact_id,
+          target: r.target_fact_id,
+          strength: parseFloat(r.strength.toString()),
+        })),
+        {
+          width: canvasWidth,
+          height: canvasHeight,
+          iterations: Math.min(600, params.iterations + nodeCount * 2),
+          nodeSpacing: params.nodeSpacing * spacingMultiplier,
+          edgeLength: params.edgeLength * spacingMultiplier,
+          repulsionStrength: params.repulsionStrength,
+          attractionStrength: params.attractionStrength,
+          damping: params.damping,
+        }
+      );
+      
+      nodeArray.forEach((fact) => {
+        const pos = positions[fact.id];
+        if (pos) {
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x: pos.x, y: pos.y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        }
+      });
+      
+      console.log('Force-directed layout complete:', graphNodes.length, 'nodes positioned');
+    } else if (layoutType === 'radial') {
+      // Radial layout: hub nodes in center with connected nodes radiating outward
+      console.log('Calculating radial layout for', nodeArray.length, 'nodes');
+      
+      // Load parameters from localStorage
+      const savedParams = localStorage.getItem('graphLayoutParams');
+      let params = {
+        centerRadius: 300,
+        ringSpacing: 350,
+        nodeSpacing: 280,
+      };
+      
+      if (savedParams) {
+        try {
+          const allParams = JSON.parse(savedParams);
+          if (allParams['radial']) {
+            params = { ...params, ...allParams['radial'] };
+          }
+        } catch (e) {
+          console.error('Failed to parse layout params:', e);
+        }
+      }
+      
+      // Use same dynamic canvas sizing
+      const nodeCount = nodeArray.length;
+      const baseSize = Math.sqrt(nodeCount) * 400;
+      const minSize = 2000;
+      const maxSize = 15000;
+      const canvasWidth = Math.max(minSize, Math.min(maxSize, baseSize));
+      const canvasHeight = Math.max(minSize, Math.min(maxSize, baseSize * 0.8));
+      
+      console.log(`Canvas: ${canvasWidth}x${canvasHeight}, Nodes: ${nodeCount}`);
+      console.log('Using params:', params);
+      
+      const positions = calculateRadialLayout(
+        nodeArray.map(f => ({ id: f.id })),
+        filteredRelationships.map(r => ({
+          source: r.source_fact_id,
+          target: r.target_fact_id,
+          strength: parseFloat(r.strength.toString()),
+        })),
+        {
+          width: canvasWidth,
+          height: canvasHeight,
+          centerRadius: params.centerRadius,
+          ringSpacing: params.ringSpacing,
+          nodeSpacing: params.nodeSpacing,
+        }
+      );
+      
+      nodeArray.forEach((fact) => {
+        const pos = positions[fact.id];
+        if (pos) {
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x: pos.x, y: pos.y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        }
+      });
+      
+      console.log('Radial layout complete:', graphNodes.length, 'nodes positioned');
+    } else if (layoutType === 'hierarchical-cluster') {
+      // Hierarchical Cluster layout: detect clusters and position them hierarchically
+      console.log('Calculating hierarchical cluster layout for', nodeArray.length, 'nodes');
+      
+      // Load parameters from localStorage
+      const savedParams = localStorage.getItem('graphLayoutParams');
+      let params = {
+        clusterSpacing: 500,
+        nodeSpacing: 200,
+        minClusterSize: 2,
+      };
+      
+      if (savedParams) {
+        try {
+          const allParams = JSON.parse(savedParams);
+          if (allParams['hierarchical-cluster']) {
+            params = { ...params, ...allParams['hierarchical-cluster'] };
+          }
+        } catch (e) {
+          console.error('Failed to parse layout params:', e);
+        }
+      }
+      
+      // Use same dynamic canvas sizing
+      const nodeCount = nodeArray.length;
+      const baseSize = Math.sqrt(nodeCount) * 400;
+      const minSize = 2000;
+      const maxSize = 15000;
+      const canvasWidth = Math.max(minSize, Math.min(maxSize, baseSize));
+      const canvasHeight = Math.max(minSize, Math.min(maxSize, baseSize * 0.8));
+      
+      console.log(`Canvas: ${canvasWidth}x${canvasHeight}, Nodes: ${nodeCount}`);
+      console.log('Using params:', params);
+      
+      const positions = calculateHierarchicalClusterLayout(
+        nodeArray.map(f => ({ id: f.id })),
+        filteredRelationships.map(r => ({
+          source: r.source_fact_id,
+          target: r.target_fact_id,
+          strength: parseFloat(r.strength.toString()),
+        })),
+        {
+          width: canvasWidth,
+          height: canvasHeight,
+          clusterSpacing: params.clusterSpacing,
+          nodeSpacing: params.nodeSpacing,
+          minClusterSize: params.minClusterSize,
+        }
+      );
+      
+      nodeArray.forEach((fact) => {
+        const pos = positions[fact.id];
+        if (pos) {
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x: pos.x, y: pos.y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        }
+      });
+      
+      console.log('Hierarchical cluster layout complete:', graphNodes.length, 'nodes positioned');
+    } else if (layoutType === 'iterative-refinement') {
+      // Iterative Refinement layout: position nodes in passes (hubs, neighbors, remaining, isolated)
+      console.log('Calculating iterative refinement layout for', nodeArray.length, 'nodes');
+      
+      // Load parameters from localStorage
+      const savedParams = localStorage.getItem('graphLayoutParams');
+      let params = {
+        hubRadius: 400,
+        neighborRadius: 300,
+        isolatedRadius: 800,
+        hubThreshold: 5,
+      };
+      
+      if (savedParams) {
+        try {
+          const allParams = JSON.parse(savedParams);
+          if (allParams['iterative-refinement']) {
+            params = { ...params, ...allParams['iterative-refinement'] };
+          }
+        } catch (e) {
+          console.error('Failed to parse layout params:', e);
+        }
+      }
+      
+      // Use same dynamic canvas sizing
+      const nodeCount = nodeArray.length;
+      const baseSize = Math.sqrt(nodeCount) * 400;
+      const minSize = 2000;
+      const maxSize = 15000;
+      const canvasWidth = Math.max(minSize, Math.min(maxSize, baseSize));
+      const canvasHeight = Math.max(minSize, Math.min(maxSize, baseSize * 0.8));
+      
+      console.log(`Canvas: ${canvasWidth}x${canvasHeight}, Nodes: ${nodeCount}`);
+      console.log('Using params:', params);
+      
+      const positions = calculateIterativeRefinementLayout(
+        nodeArray.map(f => ({ id: f.id })),
+        filteredRelationships.map(r => ({
+          source: r.source_fact_id,
+          target: r.target_fact_id,
+          strength: parseFloat(r.strength.toString()),
+        })),
+        {
+          width: canvasWidth,
+          height: canvasHeight,
+          hubRadius: params.hubRadius,
+          neighborRadius: params.neighborRadius,
+          isolatedRadius: params.isolatedRadius,
+          hubThreshold: params.hubThreshold,
+        }
+      );
+      
+      nodeArray.forEach((fact) => {
+        const pos = positions[fact.id];
+        if (pos) {
+          graphNodes.push({
+            id: fact.id,
+            type: 'custom',
+            position: { x: pos.x, y: pos.y },
+            data: {
+              content: fact.content,
+              type: fact.type,
+              highlighted: highlightedNodes.has(fact.id),
+            },
+          });
+        }
+      });
+      
+      console.log('Iterative refinement layout complete:', graphNodes.length, 'nodes positioned');
+    } else if (layoutType === 'magnetic-cluster') {
+      // Magnetic Cluster layout: show only anchor nodes initially, expand on click
+      console.log('Calculating magnetic cluster layout for', nodeArray.length, 'nodes');
+      
+      // Load parameters from localStorage
+      const savedParams = localStorage.getItem('graphLayoutParams');
+      let params = {
+        conditionSpacing: 600,
+        clusterRadius: 250,
+      };
+      
+      if (savedParams) {
+        try {
+          const allParams = JSON.parse(savedParams);
+          if (allParams['magnetic-cluster']) {
+            params = { ...params, ...allParams['magnetic-cluster'] };
+          }
+        } catch (e) {
+          console.error('Failed to parse layout params:', e);
+        }
+      }
+      
+      // Use same dynamic canvas sizing
+      const nodeCount = nodeArray.length;
+      const baseSize = Math.sqrt(nodeCount) * 400;
+      const minSize = 2000;
+      const maxSize = 15000;
+      const canvasWidth = Math.max(minSize, Math.min(maxSize, baseSize));
+      const canvasHeight = Math.max(minSize, Math.min(maxSize, baseSize * 0.8));
+      
+      console.log(`Canvas: ${canvasWidth}x${canvasHeight}, Nodes: ${nodeCount}`);
+      console.log('Using params:', params);
+      console.log('Expanded clusters:', Array.from(expandedClusters));
+      
+      const result = calculateMagneticClusterLayout(
+        nodeArray.map(f => ({ id: f.id, type: f.type })),
+        filteredRelationships.map(r => ({
+          source: r.source_fact_id,
+          target: r.target_fact_id,
+          strength: parseFloat(r.strength.toString()),
+        })),
+        {
+          width: canvasWidth,
+          height: canvasHeight,
+          conditionSpacing: params.conditionSpacing,
+          clusterRadius: params.clusterRadius,
+        },
+        expandedClusters
+      );
+      
+      // Store cluster info for drag operations
+      setClusterInfo(result.clusters);
+      clusterInfoRef.current = result.clusters; // Also store in ref for persistence
+      
+      // IMPORTANT: Update result.positions with saved anchor positions BEFORE processing connected nodes
+      // This ensures connected nodes use the correct (saved) anchor positions when applying offsets
+      const anchorPositionUpdates = new Map<string, { old: { x: number; y: number }, new: { x: number; y: number } }>();
+      result.clusters.forEach((clusterData, anchorId) => {
+        const savedAnchorPos = magneticClusterPositions[anchorId];
+        const originalAnchorPos = result.positions[anchorId];
+        if (savedAnchorPos && originalAnchorPos) {
+          console.log(`Updating anchor ${anchorId} position from calculated (${originalAnchorPos.x.toFixed(0)}, ${originalAnchorPos.y.toFixed(0)}) to saved (${savedAnchorPos.x.toFixed(0)}, ${savedAnchorPos.y.toFixed(0)})`);
+          anchorPositionUpdates.set(anchorId, { old: originalAnchorPos, new: savedAnchorPos });
+          result.positions[anchorId] = savedAnchorPos;
+        }
+      });
+      
+      // Also update calculated positions for connected nodes to account for anchor moves
+      // This ensures that when we initialize offsets, they're relative to the correct anchor position
+      if (anchorPositionUpdates.size > 0) {
+        result.clusters.forEach((clusterData, anchorId) => {
+          const update = anchorPositionUpdates.get(anchorId);
+          if (update && clusterData.isExpanded) {
+            const dx = update.new.x - update.old.x;
+            const dy = update.new.y - update.old.y;
+            console.log(`Adjusting ${clusterData.connectedNodes.length} connected nodes by offset (${dx.toFixed(0)}, ${dy.toFixed(0)})`);
+            clusterData.connectedNodes.forEach(nodeId => {
+              const nodePos = result.positions[nodeId];
+              if (nodePos) {
+                result.positions[nodeId] = {
+                  x: nodePos.x + dx,
+                  y: nodePos.y + dy,
+                };
+              }
+            });
+          }
+        });
+      }
+      
+      // Only create nodes for visible nodes
+      nodeArray.forEach((fact) => {
+        if (result.visibleNodes.has(fact.id)) {
+          const pos = result.positions[fact.id];
+          if (pos) {
+            const cluster = result.clusters.get(fact.id);
+            let finalPos: { x: number; y: number };
+            
+            // Check if this node has a custom offset relative to its anchor
+            const offset = magneticClusterOffsets[fact.id];
+            
+            // Determine if this is a connected node (not an anchor)
+            let belongsToAnchor: string | null = null;
+            if (!cluster) {
+              // Find which anchor this node belongs to
+              result.clusters.forEach((clusterData, anchorId) => {
+                if (clusterData.connectedNodes.includes(fact.id)) {
+                  belongsToAnchor = anchorId;
+                }
+              });
+            }
+            
+            if (offset && belongsToAnchor) {
+              // This is a connected node with a saved offset - apply it relative to current anchor position
+              // Use the current anchor position from the layout result (which includes any moves)
+              const currentAnchorPos = result.positions[belongsToAnchor];
+              if (currentAnchorPos) {
+                // Check if the offset's anchor matches the current anchor
+                if (offset.anchorId === belongsToAnchor) {
+                  // Verify the offset is reasonable (not too large)
+                  const offsetDistance = Math.sqrt(offset.dx * offset.dx + offset.dy * offset.dy);
+                  const maxReasonableOffset = params.clusterRadius * 3; // 3x cluster radius
+                  
+                  if (offsetDistance > maxReasonableOffset) {
+                    console.warn(`Offset for ${fact.id} is too large (${offsetDistance.toFixed(0)} > ${maxReasonableOffset}), using fresh calculated position`);
+                    // Offset is unreasonable, use calculated position and reinitialize
+                    finalPos = pos;
+                    const newOffset = {
+                      dx: pos.x - currentAnchorPos.x,
+                      dy: pos.y - currentAnchorPos.y,
+                      anchorId: belongsToAnchor,
+                    };
+                    setMagneticClusterOffsets(prev => ({
+                      ...prev,
+                      [fact.id]: newOffset,
+                    }));
+                  } else {
+                    console.log(`Applying saved offset for ${fact.id}: anchor ${belongsToAnchor} at (${currentAnchorPos.x.toFixed(0)}, ${currentAnchorPos.y.toFixed(0)}), offset (${offset.dx.toFixed(0)}, ${offset.dy.toFixed(0)})`);
+                    finalPos = {
+                      x: currentAnchorPos.x + offset.dx,
+                      y: currentAnchorPos.y + offset.dy,
+                    };
+                    console.log(`Final position: (${finalPos.x.toFixed(0)}, ${finalPos.y.toFixed(0)})`);
+                  }
+                } else {
+                  // Anchor mismatch - this node belonged to a different anchor, use calculated position
+                  console.warn(`Anchor mismatch for ${fact.id}: offset anchor ${offset.anchorId} != current anchor ${belongsToAnchor}, using fresh calculated position`);
+                  finalPos = pos;
+                  const newOffset = {
+                    dx: pos.x - currentAnchorPos.x,
+                    dy: pos.y - currentAnchorPos.y,
+                    anchorId: belongsToAnchor,
+                  };
+                  setMagneticClusterOffsets(prev => ({
+                    ...prev,
+                    [fact.id]: newOffset,
+                  }));
+                }
+              } else {
+                // Anchor not found, use calculated position
+                console.log(`Anchor ${belongsToAnchor} not found in positions, using calculated position`);
+                finalPos = pos;
+              }
+            } else if (belongsToAnchor) {
+              // This is a connected node without a saved offset - use calculated position and initialize offset
+              const anchorPos = result.positions[belongsToAnchor];
+              if (anchorPos) {
+                // Use the calculated position from the layout algorithm (which is already relative to current anchor)
+                finalPos = pos;
+                
+                // Initialize the offset for future use
+                const newOffset = {
+                  dx: pos.x - anchorPos.x,
+                  dy: pos.y - anchorPos.y,
+                  anchorId: belongsToAnchor,
+                };
+                console.log(`Initializing offset for ${fact.id}: calculated pos (${pos.x}, ${pos.y}), anchor at (${anchorPos.x}, ${anchorPos.y}), offset (${newOffset.dx}, ${newOffset.dy})`);
+                setMagneticClusterOffsets(prev => ({
+                  ...prev,
+                  [fact.id]: newOffset,
+                }));
+              } else {
+                finalPos = pos;
+              }
+            } else {
+              // This is an anchor node - use saved absolute position or calculated position
+              finalPos = magneticClusterPositions[fact.id] || pos;
+            }
+            
+            graphNodes.push({
+              id: fact.id,
+              type: 'custom',
+              position: { x: finalPos.x, y: finalPos.y },
+              data: {
+                content: fact.content,
+                type: fact.type,
+                highlighted: highlightedNodes.has(fact.id),
+                clusterInfo: cluster, // Pass cluster info directly in node data
+              },
+            });
+          }
+        }
+      });
+      
+      console.log('Magnetic cluster layout complete:', graphNodes.length, 'visible nodes out of', nodeArray.length, 'total');
     }
     
     if (layoutType === 'ai' || (layoutType === 'custom' && graphNodes.length < nodeArray.length)) {
@@ -564,9 +1233,34 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
 
     setNodes(graphNodes);
     setEdges(graphEdges);
-  }, [allRelationships, filters, currentTime, highlightedNodes, layoutType, setNodes, setEdges, calculateOptimalHandles, loadNodePositions]);
+  }, [allRelationships, filters, currentTime, highlightedNodes, manuallyShownNodes, layoutType, layoutRecalcTrigger, expandedClusters, setNodes, setEdges, calculateOptimalHandles, loadNodePositions]);
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    // If in magnetic cluster layout, check the mode
+    if (layoutType === 'magnetic-cluster' && magneticClusterMode === 'toggle') {
+      console.log('Clicked node in magnetic-cluster toggle mode:', node.id, 'Type:', node.data.type);
+      const cluster = clusterInfoRef.current.get(node.id);
+      console.log('Cluster info:', cluster);
+      if (cluster) {
+        // This is an anchor node - toggle expansion
+        console.log('Toggling cluster expansion for:', node.id);
+        setExpandedClusters(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(node.id)) {
+            console.log('Collapsing cluster:', node.id);
+            newSet.delete(node.id);
+          } else {
+            console.log('Expanding cluster:', node.id, 'with', cluster.connectedNodes.length, 'nodes');
+            newSet.add(node.id);
+          }
+          console.log('New expanded clusters:', Array.from(newSet));
+          return newSet;
+        });
+        return; // Don't select the node, just toggle expansion
+      }
+    }
+    
+    // In navigate mode or non-anchor nodes, show details
     setSelectedNode(node);
     setNodes((nds) =>
       nds.map((n) => ({
@@ -574,7 +1268,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
         selected: n.id === node.id,
       }))
     );
-  }, [setNodes]);
+  }, [layoutType, magneticClusterMode, setNodes]);
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -589,6 +1283,9 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
   const handleNodeSelect = useCallback((nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
+      // Add to manually shown nodes so it stays visible even if filtered out
+      setManuallyShownNodes(prev => new Set(prev).add(nodeId));
+      
       setSelectedNode(node);
       setNodes((nds) =>
         nds.map((n) => ({
@@ -608,6 +1305,8 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
 
   const handleFilterChange = useCallback((newFilters: typeof filters) => {
     setFilters(newFilters);
+    // Clear manually shown nodes when filters change
+    setManuallyShownNodes(new Set());
   }, []);
 
   const handleSearch = useCallback((query: string) => {
@@ -698,6 +1397,8 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
             backgroundColor: '#1f2937',
             border: '1px solid #374151',
           }}
+          zoomable
+          pannable
         />
       </ReactFlow>
 
@@ -721,7 +1422,10 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
         hasUnsavedChanges={hasUnsavedChanges}
         onSaveCustomLayout={handleSaveCustomLayout}
         onRegenerateAILayout={handleRegenerateAILayout}
+        onRecalculateLayout={() => setLayoutRecalcTrigger(prev => prev + 1)}
         isGeneratingAILayout={isGeneratingAILayout}
+        magneticClusterMode={magneticClusterMode}
+        onMagneticClusterModeChange={setMagneticClusterMode}
         theme={theme}
       />
 
