@@ -272,7 +272,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           // Clear any saved absolute positions for connected nodes to avoid confusion
           setMagneticClusterPositions(prev => {
             const newPositions = { ...prev };
-            cluster.connectedNodes.forEach(nodeId => {
+            cluster.connectedNodes.forEach((nodeId: string) => {
               delete newPositions[nodeId];
             });
             return newPositions;
@@ -458,7 +458,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
           setIsGeneratingAILayout(false);
           return; // Don't change layout type if generation failed
         }
-      } catch (error: unknown) {
+      } catch (error) {
         console.error('=== FRONTEND: AI Layout Error ===');
         console.error('Error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -498,7 +498,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
         }
       } catch (error) {
         // Silently fail - CORS/Lambda issue documented in docs/fixes/LAMBDA_CORS_ISSUE.md
-        console.warn('Timeline fetch failed (CORS/Lambda issue):', error.message);
+        console.warn('Timeline fetch failed (CORS/Lambda issue):', error instanceof Error ? error.message : String(error));
       }
     };
     fetchTimelineEvents();
@@ -523,7 +523,7 @@ const KnowledgeGraphInner: React.FC<KnowledgeGraphProps> = ({ userId, theme }) =
         }
       } catch (error) {
         // Silently fail - CORS/Lambda issue documented in docs/fixes/LAMBDA_CORS_ISSUE.md
-        console.warn('Graph fetch failed (CORS/Lambda issue):', error.message);
+        console.warn('Graph fetch failed (CORS/Lambda issue):', error instanceof Error ? error.message : String(error));
         setAllRelationships([]); // Set empty array to show "no data" message
       } finally {
         setIsLoading(false);
