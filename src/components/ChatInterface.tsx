@@ -258,10 +258,16 @@ export default function ChatInterface({
   const showNewChatButton = messages.length > 0;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Header - Only show on desktop (mobile uses bottom nav) */}
       {!isMobile && (
-        <header className="flex p-4 border-b" style={{ borderColor: theme.colors.border }}>
+        <header 
+          className="flex-shrink-0 flex p-4 border-b" 
+          style={{ 
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.background
+          }}
+        >
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <button
@@ -375,7 +381,7 @@ export default function ChatInterface({
             </div>
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto px-4 py-8 pb-24 lg:pb-8 space-y-6">
+          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -551,7 +557,7 @@ export default function ChatInterface({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 md:p-6 pb-20 lg:pb-4">
+      <div className="flex-shrink-0 p-4 md:p-6" style={{ backgroundColor: theme.colors.background }}>
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="relative">
             <div className="flex items-end gap-2 p-2 rounded-3xl" style={{ backgroundColor: theme.colors.surface, border: `1px solid ${theme.colors.border}` }}>

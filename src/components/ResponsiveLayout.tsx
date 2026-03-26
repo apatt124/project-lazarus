@@ -33,7 +33,7 @@ export default function ResponsiveLayout({
 
   return (
     <div 
-      className="flex h-full overflow-hidden" 
+      className="flex h-screen overflow-hidden" 
       style={{ 
         backgroundColor: theme.colors.background,
       }}
@@ -55,22 +55,21 @@ export default function ResponsiveLayout({
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden" style={{ position: 'relative' }}>
         {/* Content Area */}
-        <div 
-          className="flex-1 overflow-hidden"
-          style={{
-            paddingBottom: isMobile ? '64px' : '0'
-          }}
-        >
+        <div className="flex-1 overflow-hidden">
           {children}
         </div>
 
         {/* Bottom Navigation - Mobile only */}
         {isMobile && (
           <div 
-            className="fixed bottom-0 left-0 right-0 z-50"
-            style={{ height: '64px' }}
+            className="flex-shrink-0"
+            style={{ 
+              height: '64px',
+              borderTop: `1px solid ${theme.colors.border}`,
+              backgroundColor: theme.colors.background
+            }}
           >
             <BottomNavigation
               currentView={currentView}
