@@ -32,13 +32,9 @@ export default function ResponsiveLayout({
   const { currentView, setView, isMobile, sidebarOpen, toggleSidebar, setSidebarOpen } = useNavigation();
 
   return (
-    <div 
-      className="flex h-screen overflow-hidden" 
-      style={{ 
-        backgroundColor: theme.colors.background,
-      }}
-    >
-      {/* Sidebar - Desktop only or mobile when open */}
+    <div className="min-h-screen" style={{ backgroundColor: theme.colors.background }}>
+
+      {/* Sidebar - slides in over content on all screen sizes */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -54,31 +50,19 @@ export default function ResponsiveLayout({
         onConversationUpdate={onConversationUpdate}
       />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ position: 'relative' }}>
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden">
-          {children}
-        </div>
+      {/* Page content - full width, padded bottom on mobile for nav bar */}
+      <main className={isMobile ? 'pb-16' : ''}>
+        {children}
+      </main>
 
-        {/* Bottom Navigation - Mobile only */}
-        {isMobile && (
-          <div 
-            className="flex-shrink-0"
-            style={{ 
-              height: '64px',
-              borderTop: `1px solid ${theme.colors.border}`,
-              backgroundColor: theme.colors.background
-            }}
-          >
-            <BottomNavigation
-              currentView={currentView}
-              onNavigate={setView}
-              theme={theme}
-            />
-          </div>
-        )}
-      </div>
+      {/* Bottom Navigation - Mobile only, fixed to bottom */}
+      {isMobile && (
+        <BottomNavigation
+          currentView={currentView}
+          onNavigate={setView}
+          theme={theme}
+        />
+      )}
     </div>
   );
 }

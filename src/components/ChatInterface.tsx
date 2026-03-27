@@ -258,14 +258,15 @@ export default function ChatInterface({
   const showNewChatButton = messages.length > 0;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header - Only show on desktop (mobile uses bottom nav) */}
+    <div className="flex flex-col" style={{ height: '100dvh', backgroundColor: theme.colors.background }}>
+      {/* Header - desktop only, fixed at top of this container */}
       {!isMobile && (
-        <header 
-          className="flex-shrink-0 flex p-4 border-b" 
+        <header
+          className="flex-shrink-0 border-b px-4 py-3"
           style={{ 
-            borderColor: theme.colors.border,
-            backgroundColor: theme.colors.background
+            borderColor: theme.colors.border, 
+            backgroundColor: theme.colors.background,
+            boxShadow: '0 1px 0 rgba(255,255,255,0.05)'
           }}
         >
         <div className="flex items-center justify-between w-full">
@@ -342,10 +343,10 @@ export default function ChatInterface({
         <UserFactsPanel theme={theme} onClose={() => setShowProfile(false)} />
       ) : (
         <>
-        {/* Messages Area */}
+        {/* Messages Area - scrollable */}
         <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 py-8">
+          <div className="flex flex-col items-center justify-center px-4 py-16" style={{ minHeight: 'calc(100dvh - 130px)' }}>
             <div className="max-w-2xl w-full space-y-6 animate-slide-in">
               {/* Welcome Message with Logo */}
               <div className="text-center space-y-6 mt-8">
@@ -556,8 +557,11 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="flex-shrink-0 p-4 md:p-6" style={{ backgroundColor: theme.colors.background }}>
+      {/* Input Area - pinned to bottom */}
+      <div
+        className="flex-shrink-0 p-4 md:p-6 border-t"
+        style={{ backgroundColor: theme.colors.background, borderColor: theme.colors.border }}
+      >
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="relative">
             <div className="flex items-end gap-2 p-2 rounded-3xl" style={{ backgroundColor: theme.colors.surface, border: `1px solid ${theme.colors.border}` }}>
