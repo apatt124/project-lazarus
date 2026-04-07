@@ -71,17 +71,103 @@ async function getUserFacts() {
   try {
     const pool = await getDbPool();
     const result = await pool.query(`
-      SELECT fact_type, content, confidence, fact_date
+      SELECT id, fact_type, content, confidence, fact_date, source_type
       FROM medical.user_facts
       WHERE (valid_until IS NULL OR valid_until > NOW())
+        AND is_active = true
         AND confidence >= 0.5
       ORDER BY confidence DESC, created_at DESC
-      LIMIT 50
+      LIMIT 100
     `);
     return result.rows;
   } catch (error) {
     console.error('Error fetching user facts:', error);
     return [];
+  }
+}
+
+// High-value fact types that should always be extracted and persisted
+const CLINICAL_FACT_TYPES = {
+  medication:        { label: 'Medication/Prescription', confidence: 0.92 },
+  procedure:         { label: 'Medical Procedure',       confidence: 0.92 },
+  medical_condition: { label: 'Diagnosis/Condition',     confidence: 0.90 },
+  allergy:           { label: 'Allergy',                 confidence: 0.95 },
+  lab_result:        { label: 'Lab Result',              confidence: 0.88 },
+  vital_sign:        { label: 'Vital Sign',              confidence: 0.85 },
+  symptom:           { label: 'Symptom',                 confidence: 0.80 },
+  family_history:    { label: 'Family History',          confidence: 0.85 },
+};
+
+/**
+ * Ask Claude to extract structured clinical facts from a single conversation turn.
+ * Returns an array of { fact_type, content, fact_date } objects.
+ */
+async function extractClinicalFacts(userQuery, assistantResponse) {
+  const extractionPrompt = `You are a clinical fact extractor. Given a conversation turn, identify any concrete medical facts mentioned.
+
+Return ONLY a JSON array (no markdown, no explanation). Each element:
+{
+  "fact_type": one of: medication | procedure | medical_condition | allergy | lab_result | vital_sign | symptom | family_history,
+  "content": "concise factual statement, e.g. 'Started amoxicillin 500mg for sinus infection'",
+  "fact_date": "YYYY-MM-DD if a date was mentioned, otherwise null"
+}
+
+Only include facts that are clearly stated. If nothing clinical is mentioned, return [].
+
+User said: ${userQuery}
+Assistant said: ${assistantResponse.substring(0, 1000)}`;
+
+  try {
+    const command = new InvokeModelCommand({
+      modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      body: JSON.stringify({
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: 512,
+        temperature: 0,
+        messages: [{ role: 'user', content: extractionPrompt }],
+      }),
+    });
+    const response = await bedrock.send(command);
+    const text = JSON.parse(new TextDecoder().decode(response.body)).content[0].text.trim();
+    const facts = JSON.parse(text);
+    return Array.isArray(facts) ? facts : [];
+  } catch (err) {
+    console.error('Fact extraction failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Persist extracted facts to user_facts, skipping near-duplicates.
+ */
+async function persistExtractedFacts(facts, conversationId) {
+  if (!facts.length) return;
+  const pool = await getDbPool();
+
+  for (const fact of facts) {
+    const meta = CLINICAL_FACT_TYPES[fact.fact_type];
+    if (!meta) continue;
+
+    // Simple dedup: skip if identical content already exists
+    const existing = await pool.query(
+      `SELECT id FROM medical.user_facts WHERE fact_type = $1 AND content ILIKE $2 AND is_active = true LIMIT 1`,
+      [fact.fact_type, fact.content]
+    );
+    if (existing.rows.length > 0) continue;
+
+    await pool.query(`
+      INSERT INTO medical.user_facts
+        (fact_type, content, confidence, source_type, source_conversation_id, fact_date, valid_from, verified_by, metadata)
+      VALUES ($1, $2, $3, 'conversation', $4, $5, NOW(), 'chat_extraction', $6)
+    `, [
+      fact.fact_type,
+      fact.content,
+      meta.confidence,
+      conversationId || null,
+      fact.fact_date || null,
+      JSON.stringify({ extracted_from: 'conversation', label: meta.label }),
+    ]);
+    console.log(`Persisted fact [${fact.fact_type}]: ${fact.content}`);
   }
 }
 
@@ -133,8 +219,33 @@ async function searchMemories(query) {
   }
 }
 
-// Generate AI response using Claude
-async function generateAIResponse(systemPrompt, userMessage) {
+// Fetch recent conversation history from DB
+async function getConversationHistory(conversationId, limit = 20) {
+  if (!conversationId || conversationId === 'temp') return [];
+  try {
+    const pool = await getDbPool();
+    const result = await pool.query(`
+      SELECT role, content
+      FROM medical.messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC
+      LIMIT $2
+    `, [conversationId, limit]);
+    return result.rows; // [{ role: 'user'|'assistant', content: string }]
+  } catch (error) {
+    console.error('Error fetching conversation history:', error);
+    return [];
+  }
+}
+
+// Generate AI response using Claude, with full conversation history
+async function generateAIResponse(systemPrompt, userMessage, conversationHistory = []) {
+  // Build messages array: prior turns + current user message
+  const messages = [
+    ...conversationHistory.map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userMessage },
+  ];
+
   const command = new InvokeModelCommand({
     modelId: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
     body: JSON.stringify({
@@ -142,7 +253,7 @@ async function generateAIResponse(systemPrompt, userMessage) {
       max_tokens: 8000,
       temperature: 0.7,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
+      messages,
     }),
   });
 
@@ -204,47 +315,48 @@ You have access to ${totalSources} medical documents for this query.`;
 // Build user message with context
 function buildUserMessage(query, medicalDocs, userFacts, memories) {
   let message = '';
-  
-  // Add user facts context (weighted by confidence)
+
+  // Pin high-value clinical facts at the very top — always present regardless of search
   if (userFacts.length > 0) {
-    message += '# Known Facts About User\n\n';
-    
-    const factsByType = {};
-    userFacts.forEach(fact => {
-      if (!factsByType[fact.fact_type]) {
-        factsByType[fact.fact_type] = [];
+    // Separate high-confidence clinical facts from lower-priority ones
+    const clinicalTypes = new Set(Object.keys(CLINICAL_FACT_TYPES));
+    const pinned = userFacts.filter(f => clinicalTypes.has(f.fact_type) && f.confidence >= 0.8);
+    const other  = userFacts.filter(f => !clinicalTypes.has(f.fact_type) || f.confidence < 0.8);
+
+    if (pinned.length > 0) {
+      message += '# ⚠️ IMPORTANT — Known Clinical Facts (always consider these)\n\n';
+      const byType = {};
+      pinned.forEach(f => { (byType[f.fact_type] = byType[f.fact_type] || []).push(f); });
+      for (const [type, facts] of Object.entries(byType)) {
+        const label = CLINICAL_FACT_TYPES[type]?.label || type.replace(/_/g, ' ');
+        message += `## ${label}\n`;
+        facts.forEach(f => {
+          const src = f.source_type === 'conversation' ? '💬 from chat' : '📄 from records';
+          const date = f.fact_date ? ` (${f.fact_date})` : '';
+          message += `- ${f.content}${date} [${src}]\n`;
+        });
+        message += '\n';
       }
-      factsByType[fact.fact_type].push(fact);
-    });
-    
-    Object.entries(factsByType).forEach(([type, facts]) => {
-      message += `## ${type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}\n`;
-      facts.forEach(fact => {
-        // Include confidence indicator for lower confidence facts
-        const confidenceNote = fact.confidence < 0.8 ? ` [${(fact.confidence * 100).toFixed(0)}% confidence]` : '';
-        message += `- ${fact.content}${confidenceNote}`;
-        if (fact.fact_date) {
-          message += ` (${fact.fact_date})`;
-        }
-        message += `\n`;
-      });
-      message += '\n';
-    });
-    
-    message += '---\n\n';
+      message += '---\n\n';
+    }
+
+    if (other.length > 0) {
+      message += '# Other Known Facts\n\n';
+      other.forEach(f => { message += `- [${f.fact_type}] ${f.content}\n`; });
+      message += '\n---\n\n';
+    }
   }
-  
-  // Add memory context (weighted by relevance)
+
+  // Add memory context
   if (memories.length > 0) {
     message += '# Relevant Context from Previous Conversations\n\n';
     memories.forEach((mem, idx) => {
-      // Include relevance indicator for lower relevance memories
       const relevanceNote = mem.relevance_score < 0.8 ? ` [${(mem.relevance_score * 100).toFixed(0)}% relevance]` : '';
       message += `${idx + 1}. ${mem.content} (${mem.memory_type})${relevanceNote}\n`;
     });
     message += '\n---\n\n';
   }
-  
+
   // Add medical documents
   if (medicalDocs.length > 0) {
     message += '# Medical Records Context\n\n';
@@ -254,7 +366,7 @@ function buildUserMessage(query, medicalDocs, userFacts, memories) {
     });
     message += '---\n\n';
   }
-  
+
   message += `# User Question\n${query}`;
   return message;
 }
@@ -344,16 +456,18 @@ export const handler = async (event) => {
     const intentClassification = classifyIntent(query);
     console.log('Intent:', intentClassification);
 
-    // Fetch context in parallel
-    const [medicalDocuments, userFacts, memories] = await Promise.all([
+    // Fetch context in parallel (including conversation history)
+    const [medicalDocuments, userFacts, memories, conversationHistory] = await Promise.all([
       intentClassification.needsMedicalContext ? searchMedicalDocuments(query, 50, 0.01) : Promise.resolve([]),
       getUserFacts(),
-      searchMemories(query)
+      searchMemories(query),
+      getConversationHistory(conversation_id),
     ]);
     
     console.log(`Found ${medicalDocuments.length} medical documents`);
     console.log(`Found ${userFacts.length} user facts`);
     console.log(`Found ${memories.length} relevant memories`);
+    console.log(`Loaded ${conversationHistory.length} prior messages from conversation history`);
 
     // Build prompts
     const systemPrompt = buildSystemPrompt(
@@ -366,9 +480,9 @@ export const handler = async (event) => {
     
     const userMessage = buildUserMessage(query, medicalDocuments, userFacts, memories);
 
-    // Generate AI response
+    // Generate AI response with full conversation history for in-context memory
     console.log('Generating AI response...');
-    const aiResponse = await generateAIResponse(systemPrompt, userMessage);
+    const aiResponse = await generateAIResponse(systemPrompt, userMessage, conversationHistory);
     console.log(`Generated response: ${aiResponse.length} characters`);
 
     // Build sources
@@ -396,6 +510,11 @@ export const handler = async (event) => {
       sources,
       processing_time_ms: processingTime
     });
+
+    // Extract and persist any clinical facts from this turn (fire-and-forget, don't block response)
+    extractClinicalFacts(query, aiResponse)
+      .then(facts => persistExtractedFacts(facts, conversation_id))
+      .catch(err => console.error('Background fact extraction error:', err));
 
     // Return response
     return {
