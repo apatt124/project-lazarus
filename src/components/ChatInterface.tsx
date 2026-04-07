@@ -557,10 +557,14 @@ export default function ChatInterface({
         )}
       </div>
 
-      {/* Input Area - pinned to bottom */}
+      {/* Input Area - pinned to bottom, sits above mobile nav */}
       <div
-        className="flex-shrink-0 p-4 md:p-6 border-t"
-        style={{ backgroundColor: theme.colors.background, borderColor: theme.colors.border }}
+        className="flex-shrink-0 p-4 md:p-6 border-t sticky bottom-0 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:pb-6"
+        style={{
+          backgroundColor: theme.colors.background,
+          borderColor: theme.colors.border,
+          marginBottom: isMobile ? '64px' : 0,
+        }}
       >
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="relative">
