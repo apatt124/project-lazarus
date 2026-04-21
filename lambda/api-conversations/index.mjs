@@ -146,7 +146,9 @@ async function updateConversation(conversationId, updates) {
 async function deleteConversation(conversationId) {
   const pool = await getDbPool();
   
-  // Messages will be deleted automatically by CASCADE
+  // Delete child records that don't cascade before removing the conversation
+  await pool.query('DELETE FROM medical.memory_embeddings WHERE source_conversation_id = $1', [conversationId]);
+  await pool.query('DELETE FROM medical.messages WHERE conversation_id = $1', [conversationId]);
   await pool.query('DELETE FROM medical.conversations WHERE id = $1', [conversationId]);
   
   return { success: true };
